@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+
+/* ==========================================================================
+   Design system do painel — Código Vencedor
+
+   Os tokens abaixo são os mesmos do `admin/admin.css` (painel vanilla, hoje
+   em /admin-legacy), portados para o `@theme` do Tailwind v4. Portar em vez
+   de reinventar é deliberado: a paleta, a escala tipográfica e os pontos de
+   quebra foram medidos contra o design aprovado e contra o zoom do iOS, e
+   trocá-los aqui seria refazer um trabalho que já está certo.
+
+   Regras que continuam valendo, porque são de segurança e não de gosto:
+
+   • Nenhum CSS de terceiro, nenhuma fonte de CDN. A CSP do /admin é
+     `style-src 'self'` e `script-src 'self' 'nonce-…'`.
+   • O Tailwind compila para UM arquivo estático servido da própria origem.
+     Nada de biblioteca que injeta <style> em runtime (Emotion, styled-
+     components): sob esta CSP elas quebrariam calada.
+   • Estilo dinâmico (largura de barra de funil, por exemplo) é escrito por
+     CSSOM — via prop `style` do React, que atribui em `element.style` e é
+     permitida. `setAttribute('style', …)` seria bloqueado.
+   ========================================================================== */
+
+@theme {
+  /* --- Superfícies ----------------------------------------------------- */
+  --color-bg: #0b0e0c;
+  --color-surface: #121714;
+  --color-surface-2: #1a211c;
+  --color-surface-3: #222b25;
+
+  --color-line: #232b26;
+  --color-line-strong: #35403a;
+
+  /* --- Marca ----------------------------------------------------------- */
+  --color-accent: #f5c518;
+  --color-accent-hover: #ffd84d;
+  --color-accent-soft: rgba(245, 197, 24, 0.13);
+  --color-accent-ink: #0b0e0c;
+
+  /* --- Cor semântica ---------------------------------------------------
+     Verde = deu certo. Amarelo = atenção. Vermelho = erro. Azul = dado
+     neutro. Número sem estado fica na cor de texto normal. */
+  --color-ok: #4ade80;
+  --color-ok-soft: rgba(74, 222, 128, 0.12);
+  --color-warn: #fbbf24;
+  --color-warn-soft: rgba(251, 191, 36, 0.12);
+  --color-danger: #fb7185;
+  --color-danger-soft: rgba(251, 113, 133, 0.12);
+  --color-info: #60a5fa;
+  --color-info-soft: rgba(96, 165, 250, 0.12);
+
+  /* --- Texto ----------------------------------------------------------- */
+  --color-ink: #eef2ee;
+  --color-ink-2: #c8d1ca;
+  --color-muted: #93a099;
+
+  /* --- Tipografia (raiz = 16px) ---------------------------------------- */
+  --text-3xs: 0.6875rem;
+  --text-2xs: 0.75rem;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.625rem;
+  --text-3xl: 2rem;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* --- Forma e profundidade -------------------------------------------- */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+
+@layer base {
+  html {
+    background: var(--color-bg);
+    /* Impede o "salto" de layout quando uma tela longa dá lugar a uma curta. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /**
+   * Campo de formulário em 16px no celular, e não menos.
+   *
+   * Abaixo de 16px o Safari do iOS dá zoom automático ao focar o campo e a
+   * página aparece cortada e deslocada. Era metade da queixa "elementos
+   * ultrapassando a tela" do painel antigo. Só encolhe no desktop, onde esse
+   * comportamento não existe.
+   */
+  input,
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+
+  @media (min-width: 48em) {
+    input,
+    select,
+    textarea {
+      font-size: var(--text-md);
+    }
+  }
+
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Números em tabela e indicador alinham na vertical. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Utilitários próprios
+   -------------------------------------------------------------------------- */
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Animações do Radix (dialog, dropdown, tooltip). Ficam aqui, no CSS
+   compilado, e não como `style` inline de biblioteca. */
+@keyframes ad-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ad-zoom-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ad-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes ad-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes ad-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

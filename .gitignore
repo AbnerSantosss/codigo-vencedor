@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+prisma/dev.db*
+backups/
+panel/dist/
+
+# Material de desenvolvimento/histórico — não faz parte do que roda em produção
+_backup-original/
+landing-demo-antigravity/
+scratch/

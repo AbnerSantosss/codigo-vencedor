@@ -1,0 +1,709 @@
+/* ==========================================================================
+   Painel administrativo — Código Vencedor
+
+   Sem framework e sem CDN: a CSP do painel (`src/lib/security.ts`) é
+   `style-src 'self'` sem `unsafe-inline` e não libera nenhum terceiro. Não
+   existe `style=""` em nenhum lugar do painel — quando é preciso escrever
+   estilo em runtime, o caminho é CSSOM (`el.style.setProperty`), que a CSP
+   permite. Espaçadores existem como classe por esse motivo.
+
+   ESCALA TIPOGRÁFICA — leia antes de mexer em qualquer `font-size`.
+
+   A versão anterior tinha um defeito silencioso: o `body` declarava
+   `font: 15px/1.5`, mas as ~40 declarações de tamanho estavam em `rem`, que
+   resolve contra a raiz (16px) e **não** contra o `body`. Resultado: tudo
+   renderizava ~6,7% maior do que o projetado, em 10 valores avulsos, sem um
+   único token e sem nenhum ajuste por largura de tela. Era isso que o dono
+   descrevia como "os textos estão grandes demais".
+
+   Agora existe uma escala só, em `rem` contra a raiz de 16px, e o `body` usa
+   um token dela. Para mudar o tamanho do painel, mexa nos tokens — não nas
+   regras.
+   ========================================================================== */
+
+:root {
+  /* --- Superfícies -------------------------------------------------------
+     Três degraus que se distinguem de fato. Antes `--ad-surface` (#141815) e
+     `--ad-surface-2` (#1b201d) ficavam a poucos pontos por canal, então
+     "cartão" e "cartão elevado" liam igual e a hierarquia sumia. */
+  --ad-bg: #0b0e0c;
+  --ad-surface: #121714;
+  --ad-surface-2: #1a211c;
+  --ad-surface-3: #222b25;
+
+  --ad-border: #232b26;
+  --ad-border-strong: #35403a;
+
+  /* --- Marca ------------------------------------------------------------- */
+  --ad-accent: #f5c518;
+  --ad-accent-hover: #ffd84d;
+  --ad-accent-soft: rgba(245, 197, 24, .13);
+  --ad-accent-ink: #0b0e0c;
+
+  /* --- Cor semântica ----------------------------------------------------
+     Verde = deu certo. Amarelo = atenção / pendente. Vermelho = erro.
+     Azul = informação e dado neutro em gráfico. Nunca usar cor por enfeite:
+     se um número não tem estado, ele fica com a cor de texto normal. */
+  --ad-ok: #4ade80;
+  --ad-ok-soft: rgba(74, 222, 128, .12);
+  --ad-warn: #fbbf24;
+  --ad-warn-soft: rgba(251, 191, 36, .12);
+  --ad-danger: #fb7185;
+  --ad-danger-soft: rgba(251, 113, 133, .12);
+  --ad-info: #60a5fa;
+  --ad-info-soft: rgba(96, 165, 250, .12);
+
+  /* --- Texto ------------------------------------------------------------- */
+  --ad-text: #eef2ee;
+  --ad-text-2: #c8d1ca;
+  --ad-muted: #93a099;
+
+  /* --- Escala tipográfica (raiz = 16px) --------------------------------- */
+  --ad-fs-3xs: .6875rem;  /* 11px — rótulo de grupo, cabeçalho de detalhe */
+  --ad-fs-2xs: .75rem;    /* 12px — dica, etiqueta, nota */
+  --ad-fs-xs: .8125rem;   /* 13px — cabeçalho de tabela, texto secundário */
+  --ad-fs-sm: .875rem;    /* 14px — corpo de tabela, botão */
+  --ad-fs-md: .9375rem;   /* 15px — corpo do painel */
+  --ad-fs-lg: 1.0625rem;  /* 17px — título de cartão */
+  --ad-fs-xl: 1.375rem;   /* 22px — título da tela */
+  --ad-fs-2xl: 1.625rem;  /* 26px — valor de indicador */
+
+  /* Campo de formulário: 16px no celular, e não menos.
+     Abaixo de 16px o Safari do iOS dá **zoom automático** ao focar o campo, e
+     a página aparece cortada e deslocada — era a metade "elementos
+     ultrapassando a tela" da queixa do dono. O `font: inherit` da versão
+     anterior deixava os campos em 15px e disparava isso em todo iPhone.
+     Só encolhe no desktop, onde não existe esse comportamento. */
+  --ad-fs-input: 1rem;
+
+  /* --- Forma e profundidade -------------------------------------------- */
+  --ad-radius-sm: 8px;
+  --ad-radius: 10px;
+  --ad-radius-lg: 14px;
+  --ad-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  --ad-shadow-lg: 0 12px 32px rgba(0, 0, 0, .45);
+
+  --ad-sidebar: 15rem;
+}
+
+@media (min-width: 48em) {
+  :root {
+    --ad-fs-input: var(--ad-fs-md);
+    --ad-fs-xl: 1.5rem;
+    --ad-fs-2xl: 1.75rem;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ad-bg);
+  color: var(--ad-text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--ad-fs-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--ad-accent); }
+
+/* `font: inherit` traria o tamanho do corpo; os campos precisam do token
+   próprio por causa do zoom do iOS (ver `--ad-fs-input`). */
+button, select, textarea, input { font-family: inherit; font-size: var(--ad-fs-md); }
+input, select, textarea { font-size: var(--ad-fs-input); }
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--ad-accent);
+  outline-offset: 2px;
+}
+
+.ad-boot { display: grid; place-items: center; min-height: 100svh; color: var(--ad-muted); }
+[hidden] { display: none !important; }
+
+/* ---------------------------------------------------------------- Login -- */
+.ad-login { display: grid; place-items: center; min-height: 100svh; padding: 1.5rem; }
+.ad-login-card {
+  width: min(100%, 24rem);
+  background: var(--ad-surface);
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-lg);
+  padding: 2rem;
+  box-shadow: var(--ad-shadow-lg);
+}
+.ad-logo { font-weight: 800; font-size: var(--ad-fs-xl); letter-spacing: -.5px; margin-bottom: .35rem; }
+.ad-logo i { color: var(--ad-accent); font-style: normal; }
+.ad-login-sub { color: var(--ad-muted); font-size: var(--ad-fs-sm); margin: 0 0 1.5rem; }
+
+/* --------------------------------------------------------------- Layout -- */
+.ad-shell { display: grid; grid-template-columns: var(--ad-sidebar) 1fr; min-height: 100svh; }
+
+.ad-side {
+  background: var(--ad-surface);
+  border-right: 1px solid var(--ad-border);
+  padding: 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow-y: auto;
+}
+.ad-side-head { padding-inline: 1.25rem; }
+.ad-nav { display: flex; flex-direction: column; gap: 2px; padding-inline: .5rem; }
+.ad-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  min-height: 2.5rem;
+  padding: .4rem .75rem;
+  border-radius: var(--ad-radius-sm);
+  color: var(--ad-text-2);
+  text-decoration: none;
+  font-size: var(--ad-fs-md);
+}
+.ad-nav a:hover { background: var(--ad-surface-2); color: var(--ad-text); }
+.ad-nav a[aria-current="page"] { background: var(--ad-accent-soft); color: var(--ad-accent); font-weight: 600; }
+/* Barra à esquerda no item ativo: a cor de fundo sozinha é fraca demais para
+   dizer "você está aqui" numa lista de 13 itens. */
+.ad-nav a[aria-current="page"]::before {
+  content: '';
+  position: absolute;
+  inset-block: .4rem;
+  inset-inline-start: -.5rem;
+  inline-size: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--ad-accent);
+}
+.ad-nav-sep {
+  color: var(--ad-muted);
+  font-size: var(--ad-fs-3xs);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 1rem .75rem .25rem;
+}
+
+.ad-side-foot { margin-top: auto; padding: 1rem 1.25rem 0; border-top: 1px solid var(--ad-border); }
+.ad-who { font-size: var(--ad-fs-xs); color: var(--ad-muted); margin-bottom: .5rem; word-break: break-all; }
+
+.ad-main { padding: clamp(1rem, 3vw, 2.5rem); min-width: 0; }
+.ad-head { margin-bottom: 1.75rem; }
+.ad-head h1 { font-size: var(--ad-fs-xl); font-weight: 800; letter-spacing: -.5px; margin: 0 0 .25rem; }
+.ad-head p { color: var(--ad-muted); font-size: var(--ad-fs-md); margin: 0; max-width: 60ch; }
+
+/* Tablet e abaixo: a barra lateral vira faixa de navegação no topo.
+   `nowrap` + rolagem horizontal, e NÃO `wrap`: com 13 itens, embrulhar
+   produzia uma pilha de quatro linhas de links empurrando o conteúdo da tela
+   para baixo da dobra. Uma faixa que rola mantém a altura previsível. */
+@media (max-width: 56em) {
+  .ad-shell { grid-template-columns: 1fr; }
+  .ad-side {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: auto;
+    padding: .75rem 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--ad-border);
+    gap: .5rem;
+    box-shadow: var(--ad-shadow);
+  }
+  .ad-nav {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: .25rem;
+    padding-inline: .75rem;
+    scroll-snap-type: x proximity;
+  }
+  .ad-nav::-webkit-scrollbar { display: none; }
+  .ad-nav a { flex: 0 0 auto; min-height: 2.25rem; font-size: var(--ad-fs-sm); scroll-snap-align: center; }
+  /* A barra vertical não funciona numa faixa horizontal: vira sublinhado. */
+  .ad-nav a[aria-current="page"]::before {
+    inset: auto 0 -.25rem 0;
+    inline-size: auto;
+    block-size: 2px;
+    border-radius: 2px;
+  }
+  .ad-nav-sep { display: none; }
+  .ad-side-foot { padding-top: .75rem; }
+  .ad-head { margin-bottom: 1.25rem; }
+}
+
+/* Celular estreito: não existia NENHUM ponto de quebra abaixo de 896px, num
+   painel cujo dono usa celular. Tudo aqui é redução de respiro, nunca de
+   legibilidade — o texto continua na escala, o que encolhe é o espaço. */
+@media (max-width: 40em) {
+  .ad-main { padding: .875rem; }
+  .ad-card { padding: 1.125rem; border-radius: var(--ad-radius); }
+  .ad-kpi { padding: .875rem 1rem; }
+  .ad-actions { margin-top: 1.125rem; }
+  .ad-actions .ad-btn { flex: 1 1 auto; }
+}
+
+/* ---------------------------------------------------------------- Cards -- */
+.ad-card {
+  background: var(--ad-surface);
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+  max-width: 52rem;
+  box-shadow: var(--ad-shadow);
+}
+.ad-card h2 { font-size: var(--ad-fs-lg); font-weight: 700; margin: 0 0 .25rem; letter-spacing: -.2px; }
+.ad-card .ad-hint { color: var(--ad-muted); font-size: var(--ad-fs-sm); margin: 0 0 1.25rem; max-width: 60ch; }
+
+/* --------------------------------------------------------------- Campos -- */
+.ad-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+.ad-field { display: grid; gap: .35rem; min-width: 0; }
+.ad-field > span { font-size: var(--ad-fs-xs); font-weight: 600; color: var(--ad-text-2); }
+.ad-field small { color: var(--ad-muted); font-size: var(--ad-fs-2xs); }
+
+.ad-input, .ad-select, .ad-textarea {
+  background: var(--ad-bg);
+  border: 1px solid var(--ad-border-strong);
+  border-radius: var(--ad-radius-sm);
+  padding: .6rem .75rem;
+  color: var(--ad-text);
+  min-height: 2.75rem;
+  width: 100%;
+}
+.ad-textarea {
+  min-height: 9rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--ad-fs-sm);
+  line-height: 1.6;
+}
+.ad-input:focus, .ad-select:focus, .ad-textarea:focus {
+  border-color: var(--ad-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ad-accent-soft);
+}
+.ad-input[aria-invalid="true"] { border-color: var(--ad-danger); }
+.ad-input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px var(--ad-danger-soft); }
+.ad-input::placeholder, .ad-textarea::placeholder { color: var(--ad-muted); opacity: .7; }
+
+/* Interruptor — o alvo clicável é a linha inteira, não só o quadradinho. */
+.ad-toggle {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  min-height: 2.75rem;
+  padding: .5rem .75rem;
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-sm);
+  background: var(--ad-bg);
+  cursor: pointer;
+}
+.ad-toggle:hover { border-color: var(--ad-border-strong); background: var(--ad-surface-2); }
+/* Ligado = barra de acento à esquerda, não fundo amarelo.
+   O acento da marca e o `--ad-warn` são os dois amarelos, então preencher o
+   interruptor ligado com `--ad-accent-soft` fazia uma configuração normal
+   parecer um aviso: em Escassez davam sete blocos âmbar na mesma tela, e os
+   três avisos de verdade não se distinguiam dos quatro interruptores. O
+   estado já é legível pelo próprio quadradinho (`accent-color`), então o
+   preenchimento era redundante — o âmbar cheio fica reservado para aviso.
+   O `padding` compensa os 2px que a borda mais grossa acrescenta, para a
+   linha não pular ao ser ligada. */
+.ad-toggle:has(input:checked) {
+  border-color: var(--ad-border-strong);
+  background: var(--ad-surface-2);
+  border-inline-start: 3px solid var(--ad-accent);
+  padding-inline-start: calc(.75rem - 2px);
+}
+.ad-toggle input { inline-size: 1.15rem; block-size: 1.15rem; accent-color: var(--ad-accent); cursor: pointer; flex: none; }
+.ad-toggle-text { display: grid; gap: 1px; min-width: 0; }
+.ad-toggle-text b { font-weight: 600; font-size: var(--ad-fs-md); }
+.ad-toggle-text small { color: var(--ad-muted); font-size: var(--ad-fs-2xs); }
+
+/* Cor: amostra + campo de texto lado a lado */
+.ad-color { display: flex; align-items: center; gap: .5rem; }
+.ad-color input[type="color"] {
+  inline-size: 2.75rem; block-size: 2.75rem;
+  padding: 0; border: 1px solid var(--ad-border-strong); border-radius: var(--ad-radius-sm);
+  background: none; cursor: pointer; flex: 0 0 auto;
+}
+.ad-color input[type="text"] { font-family: ui-monospace, monospace; font-size: var(--ad-fs-xs); }
+
+/* -------------------------------------------------------------- Botões --- */
+.ad-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  min-height: 2.75rem;
+  padding: .5rem 1.25rem;
+  border: 0;
+  border-radius: var(--ad-radius-sm);
+  background: var(--ad-accent);
+  color: var(--ad-accent-ink);
+  font-size: var(--ad-fs-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ad-btn:hover { background: var(--ad-accent-hover); }
+.ad-btn:active { transform: translateY(1px); }
+.ad-btn:disabled { opacity: .5; cursor: progress; transform: none; }
+.ad-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--ad-border-strong);
+  color: var(--ad-text);
+  font-weight: 600;
+}
+.ad-btn--ghost:hover { background: var(--ad-surface-2); border-color: var(--ad-accent); color: var(--ad-accent); }
+.ad-btn--block { width: 100%; }
+.ad-actions { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; margin-top: 1.5rem; }
+
+/* --------------------------------------------------------------- Avisos -- */
+.ad-msg {
+  border-radius: var(--ad-radius-sm);
+  padding: .75rem 1rem;
+  font-size: var(--ad-fs-sm);
+  margin-bottom: 1rem;
+  border-inline-start-width: 3px;
+  border-inline-start-style: solid;
+}
+.ad-msg--err { background: var(--ad-danger-soft); border: 1px solid rgba(251, 113, 133, .32); border-inline-start: 3px solid var(--ad-danger); color: var(--ad-danger); }
+.ad-msg--ok { background: var(--ad-ok-soft); border: 1px solid rgba(74, 222, 128, .3); border-inline-start: 3px solid var(--ad-ok); color: var(--ad-ok); }
+.ad-msg--warn { background: var(--ad-warn-soft); border: 1px solid rgba(251, 191, 36, .3); border-inline-start: 3px solid var(--ad-warn); color: var(--ad-warn); }
+
+.ad-toast {
+  position: fixed;
+  inset-block-end: 1.25rem;
+  inset-inline-end: 1.25rem;
+  max-inline-size: min(24rem, calc(100vw - 2.5rem));
+  background: var(--ad-surface-3);
+  border: 1px solid var(--ad-border-strong);
+  border-left: 3px solid var(--ad-ok);
+  border-radius: var(--ad-radius-sm);
+  padding: .75rem 1.25rem;
+  font-size: var(--ad-fs-sm);
+  box-shadow: var(--ad-shadow-lg);
+  z-index: 100;
+}
+.ad-toast--err { border-left-color: var(--ad-danger); }
+
+/* Espaçadores. Existem como classe, e não como style inline, porque a CSP do
+   painel roda sem 'unsafe-inline'. */
+.ad-sp-sm { height: .5rem; }
+.ad-sp { height: 1rem; }
+.ad-sp-lg { height: 1.5rem; }
+
+/* --------------------------------------------------------------- Tabelas -- */
+.ad-table { width: 100%; border-collapse: collapse; font-size: var(--ad-fs-sm); }
+.ad-table th, .ad-table td {
+  text-align: left;
+  padding: .6rem .5rem;
+  border-bottom: 1px solid var(--ad-border);
+}
+.ad-table th {
+  color: var(--ad-muted);
+  font-weight: 600;
+  font-size: var(--ad-fs-xs);
+  white-space: nowrap;
+}
+.ad-table tbody tr:last-child td { border-bottom: 0; }
+
+/* `nowrap` com `max-width` fixo é o que estourava as tabelas no celular: o
+   `nowrap` faz a largura mínima da célula ser o texto inteiro, e a soma dos
+   mínimos passa do contêiner. Aqui o teto encolhe junto com a tela, e quem
+   precisa de rolagem tem `.ad-table-wrap`. */
+.ad-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 18rem;
+}
+@media (max-width: 56em) {
+  .ad-table td { max-width: 12rem; }
+}
+@media (max-width: 40em) {
+  .ad-table { font-size: var(--ad-fs-xs); }
+  .ad-table th, .ad-table td { padding: .5rem .4rem; }
+  .ad-table td { max-width: 9rem; }
+}
+.ad-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.ad-group-title {
+  font-size: var(--ad-fs-xs);
+  font-weight: 700;
+  letter-spacing: .5px;
+  color: var(--ad-accent);
+  margin: 0 0 .75rem;
+  text-transform: uppercase;
+}
+.ad-group-title + .ad-field { margin-bottom: .75rem; }
+
+/* Espaçamento acima de uma dica que segue um grupo de campos. */
+.ad-mt { margin-top: 1rem; }
+
+/* ============================== Dashboard ============================== */
+.ad-dash-head { display: flex; justify-content: flex-end; margin-bottom: 1.25rem; }
+
+.ad-period {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ad-surface);
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius);
+}
+.ad-period-btn {
+  min-height: 2.25rem;
+  padding: .35rem 1rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ad-muted);
+  font-size: var(--ad-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.ad-period-btn:hover { color: var(--ad-text); background: var(--ad-surface-2); }
+.ad-period-btn.is-on { background: var(--ad-accent); color: var(--ad-accent-ink); font-weight: 700; }
+
+/* Cartões de indicador */
+.ad-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.ad-kpi {
+  background: var(--ad-surface);
+  border: 1px solid var(--ad-border);
+  border-radius: var(--ad-radius-lg);
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--ad-shadow);
+  min-width: 0;
+}
+.ad-kpi-label {
+  color: var(--ad-muted);
+  font-size: var(--ad-fs-2xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: .6rem;
+}
+.ad-kpi-value {
+  font-size: var(--ad-fs-2xl);
+  font-weight: 800;
+  letter-spacing: -.8px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.ad-kpi-delta {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  margin-top: .5rem;
+  font-size: var(--ad-fs-xs);
+  font-weight: 600;
+  color: var(--ad-muted);
+  flex-wrap: wrap;
+}
+.ad-kpi-delta.is-up { color: var(--ad-ok); }
+.ad-kpi-delta.is-down { color: var(--ad-danger); }
+.ad-kpi-arrow { font-size: .6rem; line-height: 1; }
+.ad-kpi-note { color: var(--ad-muted); font-weight: 400; }
+
+/* Linhas de cartões. A de gráficos dá mais espaço ao de receita porque uma
+   série temporal precisa de largura para ser lida. */
+.ad-dash-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  align-items: start;
+}
+@media (min-width: 75rem) {
+  .ad-dash-row--charts { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+}
+.ad-dash-row .ad-card { margin-bottom: 0; max-width: none; }
+
+.ad-chart-card { display: flex; flex-direction: column; }
+.ad-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.ad-chart-head h2 { margin: 0; }
+.ad-chart-head span { color: var(--ad-muted); font-size: var(--ad-fs-xs); }
+
+/* Altura fixa: o Chart.js precisa de um contêiner com altura definida para
+   `maintainAspectRatio: false` funcionar — sem isso o canvas cresce sem parar. */
+.ad-chart { position: relative; height: 15rem; }
+
+/* Funil.
+   As larguras fixas de antes (`flex: 0 0 10.5rem` no rótulo + `3.5rem` no
+   valor + dois gaps) consumiam 248px. Num cartão de ~272px úteis sobravam
+   ~24px para a barra, e o gráfico central do dashboard virava um traço.
+   No celular o rótulo vai para cima da barra e ela recebe a largura inteira. */
+.ad-funnel { display: grid; gap: .7rem; }
+.ad-funnel-row { display: flex; align-items: center; gap: .75rem; }
+.ad-funnel-label { flex: 0 1 10.5rem; min-width: 0; font-size: var(--ad-fs-xs); }
+.ad-funnel-row.is-final .ad-funnel-label { font-weight: 700; }
+.ad-funnel-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
+  background: var(--ad-surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ad-funnel-fill { display: block; height: 100%; background: var(--ad-info); border-radius: 4px; }
+/* Amarelo só na última etapa: é a que vira receita. */
+.ad-funnel-fill.is-final { background: var(--ad-accent); }
+.ad-funnel-value { flex: 0 0 3.5rem; text-align: right; font-size: var(--ad-fs-xs); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ad-funnel-row.is-final .ad-funnel-value { color: var(--ad-accent); font-weight: 800; }
+
+@media (max-width: 40em) {
+  .ad-funnel { gap: .9rem; }
+  .ad-funnel-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: .25rem .5rem;
+    align-items: baseline;
+  }
+  .ad-funnel-label { flex: none; }
+  .ad-funnel-value { flex: none; }
+  .ad-funnel-track { grid-column: 1 / -1; }
+}
+
+/* Etiquetas de status */
+.ad-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: var(--ad-fs-2xs);
+  font-weight: 700;
+  background: var(--ad-surface-2);
+  color: var(--ad-muted);
+  white-space: nowrap;
+}
+/* Ponto colorido antes do texto: quem não distingue as cores continua lendo
+   o rótulo, e a etiqueta não depende só de cor para comunicar estado. */
+.ad-badge::before {
+  content: '';
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.ad-badge.is-paid { background: var(--ad-ok-soft); color: var(--ad-ok); }
+.ad-badge.is-pending { background: var(--ad-warn-soft); color: var(--ad-warn); }
+.ad-badge.is-expired { background: var(--ad-surface-2); color: var(--ad-muted); }
+.ad-badge.is-warn { background: var(--ad-danger-soft); color: var(--ad-danger); }
+
+.ad-muted-cell { color: var(--ad-muted); }
+.ad-empty { color: var(--ad-muted); font-size: var(--ad-fs-sm); padding: 1.5rem 0; text-align: center; }
+
+/* ------------------------- Recuperação, e-mail, usuários, conta -------- */
+
+.ad-link-btn {
+  background: none;
+  border: 0;
+  color: var(--ad-accent);
+  cursor: pointer;
+  font-size: var(--ad-fs-sm);
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ad-link-btn:hover { color: var(--ad-accent-hover); }
+.ad-login-foot { margin-top: 1.25rem; text-align: center; }
+
+.ad-side-foot .ad-who { display: block; text-decoration: none; }
+.ad-side-foot .ad-who:hover { color: var(--ad-accent); }
+
+.ad-card--wide { max-width: none; }
+.ad-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ad-table td b { font-weight: 600; }
+.ad-table tr.is-click { cursor: pointer; }
+.ad-table tr.is-click:hover td, .ad-table tr.is-click:focus-visible td { background: var(--ad-surface-2); }
+.ad-table tr.is-click:focus-visible { outline: 2px solid var(--ad-accent); outline-offset: -2px; }
+.ad-table tr.is-open td { border-bottom: 0; }
+.ad-table .ad-actions { margin-top: 0; gap: .4rem; justify-content: flex-end; flex-wrap: nowrap; }
+.ad-table .ad-select.ad-role-select { padding: .3rem .5rem; font-size: var(--ad-fs-xs); width: auto; min-width: 9rem; min-height: 2.25rem; }
+
+.ad-detail td {
+  white-space: normal;
+  max-width: none;
+  background: var(--ad-surface-2);
+  padding: 1rem .75rem 1.25rem;
+  border-radius: 0 0 var(--ad-radius) var(--ad-radius);
+}
+.ad-detail-grid {
+  display: grid;
+  gap: 1rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+.ad-detail-grid h4 {
+  margin: 0 0 .45rem;
+  font-size: var(--ad-fs-3xs);
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--ad-muted);
+  font-weight: 700;
+}
+/* `minmax(0, …)` na primeira coluna: com `max-content` ela não encolhe, e um
+   e-mail longo no `dd` empurrava a grade para fora do cartão. */
+.ad-detail-grid dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: .3rem .75rem;
+  font-size: var(--ad-fs-xs);
+}
+.ad-detail-grid dt { color: var(--ad-muted); }
+.ad-detail-grid dd { margin: 0; word-break: break-word; min-width: 0; }
+.ad-detail-grid a { color: var(--ad-accent); }
+
+.ad-list-note { font-size: var(--ad-fs-2xs); color: var(--ad-muted); margin-top: .2rem; white-space: normal; }
+
+.ad-btn--sm { padding: .4rem .75rem; font-size: var(--ad-fs-xs); min-height: 2.25rem; }
+.ad-btn--danger { background: transparent; border: 1px solid rgba(251, 113, 133, .45); color: var(--ad-danger); font-weight: 600; }
+.ad-btn--danger:hover { background: var(--ad-danger-soft); border-color: var(--ad-danger); color: var(--ad-danger); }
+
+.ad-inline { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+
+.ad-tpl { border-top: 1px solid var(--ad-border); padding-top: 1.25rem; margin-top: 1.25rem; }
+.ad-tpl h3 { margin: 0; font-size: var(--ad-fs-md); font-weight: 700; }
+.ad-tpl .ad-hint { margin-bottom: .9rem; }
+.ad-tpl-vars { font-size: var(--ad-fs-2xs); color: var(--ad-muted); margin: .6rem 0 0; }
+.ad-tpl-vars code {
+  background: var(--ad-surface-2);
+  border: 1px solid var(--ad-border);
+  padding: .1rem .4rem;
+  border-radius: 4px;
+  font-size: var(--ad-fs-2xs);
+  margin-right: .3rem;
+  color: var(--ad-text);
+}
+
+.ad-kpi-link { display: block; color: inherit; text-decoration: none; }
+.ad-kpi-link .ad-kpi { transition: border-color .15s, background .15s; }
+.ad-kpi-link:hover .ad-kpi { border-color: var(--ad-accent); background: var(--ad-surface-2); }
+
+.ad-dash-head--split { justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+
+@media (max-width: 56em) {
+  .ad-table .ad-actions { flex-wrap: wrap; justify-content: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ad-btn:active { transform: none; }
+  .ad-kpi-link .ad-kpi { transition: none; }
+}

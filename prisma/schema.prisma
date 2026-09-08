@@ -1,0 +1,459 @@
+// Código Vencedor — modelo de dados.
+//
+// Regras que valem para o schema inteiro:
+//  - dinheiro sempre em centavos (Int), nunca Float;
+//  - dado pessoal sensível (CPF) é gravado cifrado, com um sufixo em claro
+//    só para conferência visual no painel;
+//  - credencial de terceiro nunca fica em coluna comum: vai em `Secret`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * ------------------------------------------------------------------ *
+ * Administração
+ * ------------------------------------------------------------------
+ */
+
+enum AdminRole {
+  owner
+  editor
+}
+
+model AdminUser {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String
+  name               String?
+  role               AdminRole @default(editor)
+  mustChangePassword Boolean   @default(true)
+  // Contador e trava do lockout: 5 erros seguidos bloqueiam por 15 minutos.
+  failedAttempts     Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  disabledAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordResetToken[]
+  auditLogs      AuditLog[]
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  // Guardamos o hash, não o token: vazamento do banco não vira sessão válida.
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  user AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Token de recuperação de senha do admin. Uso único, vida curta, hash no
+/// banco — o valor em claro só existe no link enviado por e-mail.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  user AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  diff      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user AdminUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+/**
+ * ------------------------------------------------------------------ *
+ * Configuração do site
+ * ------------------------------------------------------------------
+ */
+
+enum GatewayId {
+  mercadopago
+  appmax
+  static_pix
+}
+
+enum GatewayMode {
+  sandbox
+  production
+}
+
+/// Registro único (id = 1). Tudo que o admin edita na LP mora aqui.
+model SiteConfig {
+  id Int @id @default(1)
+
+  // Conteúdo: preço, valor "de", textos dos CTAs, vídeo.
+  content  Json
+  // Tokens de cor (--cv-*) que o lp.js aplica em runtime.
+  theme    Json
+  // Os quatro blocos de escassez: flags, valores e modo do contador.
+  scarcity Json
+  // WhatsApp e redes sociais.
+  links    Json
+  // Modo do checkout: formulário embutido ou botão para link externo.
+  checkout Json?
+
+  gatewayActive GatewayId   @default(static_pix)
+  gatewayMode   GatewayMode @default(sandbox)
+  pixExpiresMin Int         @default(30)
+
+  // IDs e opções de rastreamento (tokens ficam em Secret).
+  tracking Json
+
+  // Provedor e remetente de e-mail (credencial em Secret).
+  email Json
+
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+/// Credenciais de terceiros, cifradas com AES-256-GCM.
+/// A chave é a ENCRYPTION_KEY do ambiente — perdê-la torna tudo ilegível.
+model Secret {
+  key       String   @id
+  valueEnc  String
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+/**
+ * ------------------------------------------------------------------ *
+ * Vendas
+ * ------------------------------------------------------------------
+ */
+
+enum OrderStatus {
+  pending
+  paid
+  expired
+  refunded
+  failed
+}
+
+enum LeadStatus {
+  /// Digitou nome e e-mail mas não enviou o formulário.
+  draft
+  /// Enviou o formulário (e portanto tem CPF e telefone).
+  complete
+}
+
+model Lead {
+  id       String     @id @default(uuid())
+  nome     String
+  email    String
+  status   LeadStatus @default(complete)
+  // CPF cifrado; `cpfLast3` existe só para o admin conferir sem descriptografar.
+  // Opcionais porque um rascunho ainda não tem CPF nem telefone.
+  cpfEnc   String?
+  cpfLast3 String?
+  fone     String?
+
+  /// Quando o e-mail de "você deixou o checkout" foi enviado. Nulo = nunca.
+  recoveryEmailAt DateTime?
+
+  /// Última origem conhecida (last-touch): sobrescrita a cada visita.
+  utm       Json?
+  fbp       String?
+  fbc       String?
+  ip        String?
+  userAgent String?
+
+  /// A sessão vive no `sessionStorage` e morre ao fechar a aba.
+  sessionId String?
+
+  /// Identificador de primeira parte, em cookie de 1 ano. É o que permite
+  /// contar *pessoas* em vez de sessões: quem volta amanhã pelo mesmo
+  /// navegador mantém o `visitorId` e troca o `sessionId`. Sem ele, "12
+  /// visitantes" no painel significa "12 abas", que não é a mesma coisa.
+  visitorId String?
+
+  /// Origem da PRIMEIRA visita deste visitante, gravada uma vez e nunca
+  /// sobrescrita: `{ utm, referrer, landing, at }`.
+  ///
+  /// Existe porque `utm` responde "de onde veio a última visita" e essa é a
+  /// pergunta errada para decidir onde investir. Quem descobre o produto num
+  /// anúncio, sai, e volta dias depois pelo Google credita a venda ao Google
+  /// no last-touch — e o anúncio, que fez o trabalho, aparece com zero.
+  firstTouch Json?
+
+  /// Em que passo da régua de recuperação esta pessoa está, e quando o
+  /// próximo e-mail pode sair. `recoveryEmailAt` sozinho só sabe dizer
+  /// "já mandei alguma coisa", o que trava a régua no primeiro passo.
+  recoveryStep   Int       @default(0)
+  recoveryNextAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders       Order[]
+  funnelEvents FunnelEvent[]
+  emails       EmailLog[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([visitorId])
+  @@index([recoveryNextAt])
+}
+
+model Order {
+  id        String @id @default(uuid())
+  /// Identificador exposto na URL de status e na página de obrigado.
+  /// UUID para não ser enumerável.
+  publicId  String @unique @default(uuid())
+  /// Código curto e legível que o comprador cita no suporte (ex.: CV-7K3D9A).
+  reference String @unique
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id])
+
+  amountCents Int
+  currency    String      @default("BRL")
+  status      OrderStatus @default(pending)
+
+  provider          GatewayId
+  providerOrderId   String?
+  providerPaymentId String?
+
+  /// event_id do Purchase. Gerado no servidor, no momento em que o
+  /// pagamento é confirmado, e reaproveitado pelo navegador na /obrigado
+  /// para a Meta deduplicar em vez de contar a venda duas vezes.
+  purchaseEventId String?
+
+  /// Origem no momento da compra (last-touch), congelada aqui.
+  utm Json?
+
+  /// Origem da primeira visita, copiada do `Lead` no ato da compra.
+  ///
+  /// Congelar no pedido é o que torna o relatório reproduzível: o `Lead` é
+  /// mutável e continua recebendo visitas depois da venda, então ler a
+  /// atribuição de lá faria o mesmo relatório mudar de resposta com o tempo.
+  firstTouch Json?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  expiresAt  DateTime?
+  paidAt     DateTime?
+  refundedAt DateTime?
+
+  /// Quando o e-mail de "seu Pix expirou" foi enviado. Nulo = nunca.
+  recoveryEmailAt DateTime?
+
+  /// Passo da régua de recuperação do Pix não pago, e quando o próximo sai.
+  recoveryStep   Int       @default(0)
+  recoveryNextAt DateTime?
+
+  pixCharge     PixCharge?
+  webhookEvents WebhookEvent[]
+  deliveries    OutboundDelivery[]
+  emails        EmailLog[]
+  funnelEvents  FunnelEvent[]
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([providerPaymentId])
+  @@index([recoveryNextAt])
+}
+
+model PixCharge {
+  id           String   @id @default(uuid())
+  orderId      String   @unique
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  emv          String
+  qrCodeBase64 String?
+  expiresAt    DateTime
+  raw          Json?
+  createdAt    DateTime @default(now())
+}
+
+/// Log de tudo que os gateways nos enviam.
+/// O par (provider, externalId) é único: é o que torna o processamento
+/// idempotente quando o gateway reenvia o mesmo evento.
+model WebhookEvent {
+  id          String    @id @default(uuid())
+  provider    GatewayId
+  externalId  String
+  eventType   String
+  orderId     String?
+  order       Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payload     Json
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  result      String?
+
+  @@unique([provider, externalId])
+  @@index([receivedAt])
+}
+
+/**
+ * ------------------------------------------------------------------ *
+ * Rastreamento e métricas
+ * ------------------------------------------------------------------
+ */
+
+model FunnelEvent {
+  id String @id @default(uuid())
+
+  /// Mesmo id que foi para o dataLayer e para as APIs de conversão.
+  ///
+  /// **Único**, e isso é a deduplicação: o `sendBeacon` do navegador pode
+  /// reenviar o mesmo evento (troca de rede, aba restaurada, o próprio
+  /// retry do agente do usuário), e sem a restrição cada reenvio virava uma
+  /// linha nova — inflando a coluna "Eventos" do painel com repetição que
+  /// nunca aconteceu na tela. A ingestão passou a usar `skipDuplicates`,
+  /// então o segundo envio é simplesmente ignorado.
+  eventId String @unique
+  event   String
+
+  sessionId String?
+
+  /// Ver `Lead.visitorId`: é o que separa "quantos eventos" de "quantas
+  /// pessoas" na mesma tabela.
+  visitorId String?
+
+  /// Chave estrangeira de verdade, não mais só um texto solto. Antes esta
+  /// coluna era `String?` sem relação e escrita num único lugar, então o
+  /// painel não tinha como partir de um evento e chegar na pessoa.
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  utm       Json?
+  params    Json?
+  page      String?
+  referrer  String?
+  ip        String?
+  userAgent String?
+
+  /// Resultado do envio por plataforma: { meta: "ok", ga4: "erro 400", ... }
+  forwarded Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+/**
+ * ------------------------------------------------------------------ *
+ * Integrações de saída
+ * ------------------------------------------------------------------
+ */
+
+model OutboundWebhook {
+  id     String   @id @default(uuid())
+  name   String
+  url    String
+  secret String
+  events String[]
+  active Boolean  @default(true)
+
+  /// Verbo HTTP do destino. `POST` cobre praticamente tudo, mas alguns
+  /// endpoints de automação só aceitam `PUT`.
+  method String @default("POST")
+
+  /// Headers extras que o destino exige, como um token de API próprio.
+  /// Os nossos (`X-CV-*`, `Content-Type`, `Host`) não podem ser sobrescritos
+  /// daqui: trocar o `Content-Type` invalidaria a assinatura que o destino
+  /// confere sobre o corpo.
+  headers Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries OutboundDelivery[]
+}
+
+model OutboundDelivery {
+  id        String          @id @default(uuid())
+  webhookId String
+  webhook   OutboundWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  event String
+
+  /// O corpo que foi (ou vai ser) enviado. Guardar é o que permite tentar
+  /// de novo depois e conferir o que o destino recebeu; sem isso, uma
+  /// entrega que falhou não tem como ser reproduzida.
+  payload Json?
+
+  attempt         Int       @default(0)
+  statusCode      Int?
+  responseSnippet String?
+  nextRetryAt     DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([nextRetryAt])
+  @@index([webhookId, createdAt])
+}
+
+model EmailLog {
+  id      String  @id @default(uuid())
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  /// A quem o e-mail se refere, mesmo quando ainda não existe pedido.
+  ///
+  /// O e-mail de checkout abandonado é enviado exatamente quando não há
+  /// `Order`, então com `orderId` sozinho o envio ficava órfão e não havia
+  /// como responder "esta venda veio do e-mail de recuperação?".
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  to       String
+  template String
+  provider String
+  status   String
+  error    String?
+  sentAt   DateTime?
+
+  /// Contexto do envio: passo da régua, assunto, variáveis usadas.
+  meta Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([leadId])
+  @@index([template, createdAt])
+}

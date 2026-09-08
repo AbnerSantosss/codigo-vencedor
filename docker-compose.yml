@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-codigovencedor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-codigovencedor}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Sem "ports": o banco só é visível na rede interna do compose.
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-codigovencedor}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-codigovencedor}
+      PUBLIC_URL: ${PUBLIC_URL:?defina PUBLIC_URL}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?defina ENCRYPTION_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TRUST_CLOUDFLARE: ${TRUST_CLOUDFLARE:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      # Só no loopback do host: quem expõe para a internet é o túnel.
+      - "127.0.0.1:3000:3000"
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor}
+          | gzip > /backups/cv-$$(date +%Y%m%d-%H%M).sql.gz;
+        find /backups -name "cv-*.sql.gz" -mtime +14 -delete;
+        sleep 86400;
+      done'
+
+volumes:
+  pgdata:

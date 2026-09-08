@@ -1,0 +1,2897 @@
+/* ==========================================================================
+   Código Vencedor — Landing Page
+   Mobile-first. Os valores de desktop reproduzem exatamente o design original;
+   os breakpoints só corrigem o que quebrava no mobile (piso de fonte, alvos de
+   toque, altura do hero). Toda cor é custom property para o painel admin poder
+   repintar sem tocar no HTML.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Tokens
+   -------------------------------------------------------------------------- */
+:root {
+  /* Cores — valores originais do designer. Sobrescritos em runtime pelo admin. */
+  --cv-bg: #070a08;
+  --cv-surface: #0c0f0d;
+  --cv-surface-alt: #0a0d0b;
+  --cv-input: #141815;
+  --cv-icon-bg: #1a1d16;
+  --cv-border: #1c211d;
+  --cv-border-strong: #2a3129;
+  --cv-accent: #f5c518;
+  --cv-accent-hover: #ffd84d;
+  --cv-accent-soft: rgba(245, 197, 24, .15);
+  --cv-accent-ghost: rgba(245, 197, 24, .12);
+
+  /* Ação — o verde da marca, tirado das próprias artes (selo do e-book e
+     barra do hero mobile).
+     Amarelo e verde passam a ter papéis separados: o amarelo é a identidade
+     (títulos, preço, rótulos) e o verde é "clique aqui". Quando tudo era
+     amarelo, o botão de comprar competia com meia dúzia de elementos da
+     mesma cor.
+     8,73:1 contra o fundo e 8,20:1 do rótulo escuro sobre ele — medido, não
+     escolhido no olho. */
+  --cv-cta: #22c55e;
+  --cv-cta-hover: #4ade80;
+  --cv-cta-ink: #04160a;
+  --cv-cta-soft: rgba(34, 197, 94, .15);
+  --cv-cta-glow: rgba(34, 197, 94, .35);
+  --cv-text: #fff;
+  --cv-text-2: #e8ece8;
+  --cv-text-3: #dfe5df;
+  --cv-muted: #c9d0c9;
+  --cv-muted-2: #b8c0b8;
+  --cv-muted-3: #9aa39a;
+  --cv-danger: #ff8a65;
+  --cv-radius: 12px;
+  --cv-radius-lg: 18px;
+  --cv-radius-sm: 10px;
+
+  /* Tipografia — mobile-first. O piso de 16px no corpo e nos inputs evita o
+     zoom automático do iOS ao focar um campo. */
+  --fs-micro: .75rem;      /* 12px — piso absoluto para rótulos */
+  --fs-tag: .75rem;        /* 12px */
+  --fs-small: .9375rem;    /* 15px */
+  --fs-body: 1rem;         /* 16px */
+  --fs-lead: 1.0625rem;    /* 17px */
+  --fs-input: 1rem;        /* 16px — obrigatório */
+  --fs-btn: .9375rem;      /* 15px */
+
+  /* Alvos de toque — 48px no dedo, 40px no ponteiro fino */
+  --tap: 3rem;
+
+  --container: 1180px;
+  --gutter: 24px;
+}
+
+/* Desktop: volta aos tamanhos exatos do design original. */
+@media (min-width: 64em) {
+  :root {
+    --fs-micro: .625rem;   /* 10px */
+    --fs-tag: .6875rem;    /* 11px */
+    --fs-small: .8125rem;  /* 13px */
+    --fs-body: .9375rem;   /* 15px */
+    --fs-lead: 1.0625rem;  /* 17px */
+    --fs-btn: .875rem;     /* 14px */
+    --tap: 2.5rem;
+  }
+}
+
+/* Telas grandes: o container de 1180px é o do design original, e nele o
+   headline de 60px não cabe na metade da largura — "A odd é só o começo."
+   pede ~600px e recebia 566px, então quebrava numa quarta linha e o hero
+   inteiro parecia comprimido. Abrir o container resolve isso sem tocar em
+   nenhum tamanho de fonte: as colunas passam de 566px para 620/660px e cada
+   verso do headline volta a caber na própria linha. Abaixo de 82em nada
+   muda. */
+@media (min-width: 82em) {
+  :root { --container: 1280px; --gutter: 32px; }
+}
+@media (min-width: 100em) {
+  :root { --container: 1380px; --gutter: 40px; }
+}
+
+/* --------------------------------------------------------------------------
+   2. Base
+   -------------------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--cv-bg);
+  color: var(--cv-text);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, p { text-wrap: pretty; }
+
+img, video { max-width: 100%; height: auto; }
+
+a { color: var(--cv-accent); text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+
+:where(button, a, [role="button"]):focus-visible,
+:where(input, select, textarea):focus-visible {
+  outline: 2px solid var(--cv-accent);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--cv-accent); color: var(--cv-bg); }
+
+/* Hover só onde o ponteiro existe de verdade. No touch, :hover gruda depois do
+   primeiro toque e exige um segundo toque para o clique real. */
+@media (hover: hover) and (pointer: fine) {
+  a:hover { color: var(--cv-accent-hover); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* O atributo `hidden` vale como `display: none` vindo do navegador, então
+   qualquer `display` declarado aqui o vence — um `.cv-btn[hidden]` continuaria
+   visível, que foi como o botão do WhatsApp aparecia sem número configurado.
+   Esta regra fecha isso de uma vez para a página inteira. */
+[hidden] { display: none !important; }
+
+.cv-sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+.cv-wrap {
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* Alvos de toque: min-block-size, nunca height (WCAG 1.4.12). */
+.cv-btn, .cv-navlink, .cv-social, .cv-faq-q {
+  min-block-size: var(--tap);
+}
+
+.cv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border: 0;
+  border-radius: var(--cv-radius);
+  background: var(--cv-cta);
+  color: var(--cv-cta-ink);
+  font-size: var(--fs-btn);
+  font-weight: 800;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  padding: 16px 28px;
+  text-align: center;
+  /* O brilho verde separa o botão do fundo escuro sem precisar de borda. */
+  box-shadow: 0 8px 28px var(--cv-cta-glow);
+  transition: background .15s ease-out, transform .15s ease-out, box-shadow .15s ease-out;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-btn:hover {
+    background: var(--cv-cta-hover);
+    color: var(--cv-cta-ink);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 34px var(--cv-cta-glow);
+  }
+}
+.cv-btn:active { transform: translateY(0); }
+
+.cv-btn--block { display: flex; width: 100%; }
+.cv-btn--ghost {
+  background: transparent;
+  border: 1.5px solid var(--cv-cta);
+  color: var(--cv-cta);
+  padding: 10px 20px;
+  text-transform: none;
+  font-weight: 700;
+  letter-spacing: normal;
+  white-space: nowrap;
+  box-shadow: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-btn--ghost:hover {
+    background: var(--cv-cta-soft);
+    color: var(--cv-cta);
+    box-shadow: none;
+    transform: none;
+  }
+}
+
+/* Selo de reforço sob os CTAs principais. */
+.cv-btn-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0 0;
+  color: var(--cv-muted-2);
+  font-size: var(--fs-tag);
+}
+.cv-btn-note svg { color: var(--cv-cta); flex: 0 0 auto; }
+
+/* --------------------------------------------------------------------------
+   3. Navegação
+   -------------------------------------------------------------------------- */
+.cv-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gutter);
+  padding-block: 22px;
+  flex-wrap: wrap;
+}
+
+.cv-logo {
+  display: flex;
+  flex-direction: column;
+  line-height: .95;
+  font-weight: 800;
+  font-size: 1.5rem;
+  color: var(--cv-text);
+  letter-spacing: -.5px;
+}
+.cv-logo i { color: var(--cv-accent); font-style: normal; }
+
+.cv-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.cv-navlink {
+  display: inline-flex;
+  align-items: center;
+  color: var(--cv-text-2);
+  font-size: .875rem;
+  font-weight: 500;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-navlink:hover { color: var(--cv-accent); }
+}
+
+/* No mobile os links secundários saem da barra e o CTA fica sozinho —
+   nenhuma função desaparece, o menu só reprioriza. */
+@media (max-width: 47.99em) {
+  .cv-nav { gap: 12px; }
+  .cv-nav-links { gap: 14px; width: 100%; justify-content: space-between; }
+  .cv-navlink { font-size: var(--fs-small); }
+}
+
+/* --------------------------------------------------------------------------
+   4. Hero
+   -------------------------------------------------------------------------- */
+.cv-hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--cv-bg);
+}
+
+/* z-index explícito nas três camadas do hero: com z-index:auto o compositor
+   pode promover a imagem de fundo para uma camada própria e pintá-la por cima
+   do conteúdo, mesmo com a ordem do DOM correta. */
+.cv-hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 100%;
+  display: block;
+}
+
+.cv-hero-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg,
+    rgba(7, 10, 8, 0) 0%,
+    rgba(7, 10, 8, .05) 55%,
+    rgba(7, 10, 8, .7) 88%,
+    var(--cv-bg) 100%);
+}
+
+.cv-hero-inner { position: relative; z-index: 2; }
+
+.cv-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 48px;
+  align-items: center;
+  padding-block: 36px 56px;
+}
+
+.cv-eyebrow {
+  margin: 0 0 16px;
+  color: var(--cv-accent);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.cv-eyebrow--muted { color: var(--cv-text-2); margin-bottom: 14px; }
+
+.cv-h1 {
+  margin: 0 0 20px;
+  /* rem + vw: vw puro quebra o zoom do navegador (WCAG 1.4.4) */
+  font-size: clamp(2.375rem, 1.6rem + 3.87vw, 3.75rem);
+  line-height: 1.02;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+}
+.cv-h1 em { color: var(--cv-accent); font-style: normal; }
+
+.cv-hero-sub {
+  margin: 0 0 28px;
+  max-width: 440px;
+  color: var(--cv-text-3);
+  font-size: var(--fs-lead);
+}
+
+.cv-price-label { margin: 0 0 2px; color: var(--cv-text-2); font-size: var(--fs-body); font-weight: 600; }
+.cv-price-hero {
+  margin: 0 0 24px;
+  color: var(--cv-accent);
+  font-size: clamp(2.5rem, 1.9rem + 3vw, 3.375rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.cv-hero-note { margin: 24px 0 0; color: var(--cv-text-2); font-size: var(--fs-body); font-weight: 600; }
+
+.cv-hero-card { width: 100%; display: block; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.cv-caption { margin: 12px 0 0; text-align: center; color: var(--cv-muted-2); font-size: var(--fs-micro); }
+
+/* --------------------------------------------------------------------------
+   5. Vídeo
+   -------------------------------------------------------------------------- */
+.cv-section { max-width: var(--container); margin-inline: auto; padding-inline: var(--gutter); }
+.cv-section--video { padding-block: 56px; }
+
+.cv-video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 40px;
+  align-items: center;
+}
+
+.cv-video-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--cv-surface);
+  border: 1px solid var(--cv-border);
+}
+
+.cv-video-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  filter: blur(3px) brightness(.55);
+  transform: scale(1.15);
+}
+
+.cv-video-play {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.875rem;
+  cursor: pointer;
+  padding: 0;
+}
+.cv-video-play-circle {
+  inline-size: 5.25rem;
+  block-size: 5.25rem;
+  border-radius: 50%;
+  background: var(--cv-accent);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0.75rem 2.5rem rgba(245, 197, 24, .4);
+  /* Pulso bem leve: 4% de escala e o halo respirando. O bloco global de
+     prefers-reduced-motion no topo do arquivo ja neutraliza isso. */
+  animation: cv-play-pulse 2.8s ease-in-out infinite;
+}
+@keyframes cv-play-pulse {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0.75rem 2.5rem var(--cv-cta-glow); }
+  50%      { transform: scale(1.04); box-shadow: 0 0.75rem 3.25rem var(--cv-cta-glow); }
+}
+.cv-video-play-label {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--cv-text);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0.125rem 0.75rem rgba(0, 0, 0, .8);
+}
+.cv-video-play i {
+  inline-size: 0; block-size: 0;
+  border-left: 1.625rem solid var(--cv-bg);
+  border-top: 1rem solid transparent;
+  border-bottom: 1rem solid transparent;
+  margin-left: 0.375rem;
+}
+
+.cv-video-el {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+  object-fit: cover;
+  display: block;
+}
+
+.cv-steps { display: grid; gap: 0; }
+.cv-step {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  padding-block: 18px;
+  border-bottom: 1px solid var(--cv-border);
+}
+.cv-step:last-child { border-bottom: 0; }
+.cv-step-n {
+  color: var(--cv-accent);
+  font-size: 2.125rem;
+  font-weight: 800;
+  min-width: 56px;
+}
+.cv-step-t { font-weight: 700; font-size: var(--fs-lead); }
+.cv-step-d { color: var(--cv-muted-2); font-size: var(--fs-small); }
+
+.cv-h2 {
+  margin: 0 0 12px;
+  font-size: clamp(1.75rem, 1.35rem + 2vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -.8px;
+  line-height: 1.1;
+}
+.cv-h2-sub { margin: 0 0 28px; color: var(--cv-muted); font-size: var(--fs-body); }
+
+/* --------------------------------------------------------------------------
+   6. O que está incluído
+   -------------------------------------------------------------------------- */
+.cv-section--incluido { padding-block: 40px 56px; }
+
+.cv-incluido-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 36px;
+  align-items: center;
+}
+
+.cv-h2--small {
+  margin: 0 0 28px;
+  font-size: clamp(1.375rem, 1.25rem + .63vw, 1.625rem);
+  font-weight: 800;
+  letter-spacing: -.5px;
+}
+
+.cv-claim {
+  margin: 0 0 18px;
+  font-size: clamp(1.875rem, 1.4rem + 2.35vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -1px;
+}
+
+.cv-mock { text-align: center; }
+.cv-mock img { width: 100%; max-width: 420px; display: block; margin-inline: auto; }
+.cv-mock p { margin: 8px 0 0; color: var(--cv-muted-3); font-size: var(--fs-micro); }
+
+.cv-perks { display: grid; gap: 14px; }
+.cv-perk { display: flex; gap: 18px; align-items: center; }
+.cv-perk-icon {
+  flex: 0 0 66px;
+  block-size: 66px;
+  border: 1.5px solid var(--cv-accent);
+  border-radius: var(--cv-radius);
+  display: grid;
+  place-items: center;
+  color: var(--cv-accent);
+}
+.cv-perk-t { font-weight: 700; font-size: var(--fs-lead); }
+.cv-perk-d { color: var(--cv-muted-2); font-size: var(--fs-small); }
+
+/* --------------------------------------------------------------------------
+   7. Oferta
+   -------------------------------------------------------------------------- */
+.cv-section--oferta { padding-block: 0 40px; }
+
+.cv-oferta-head {
+  margin-bottom: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.cv-oferta-head p.cv-oferta-note {
+  margin: 0;
+  color: var(--cv-muted);
+  font-size: var(--fs-body);
+  max-width: 380px;
+}
+
+/* Colunas explícitas em vez de `auto-fit`. Com 6 cartões o `auto-fit` cabia
+   4 na primeira linha e deixava 2 sozinhos com metade da faixa vazia ao lado.
+   3 × 2 fecha a grade em qualquer largura de desktop. */
+.cv-tools {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+@media (min-width: 40em) { .cv-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 64em) { .cv-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }
+
+.cv-tool {
+  background: var(--cv-surface);
+  border: 1px solid var(--cv-border);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color .15s ease-out;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-tool:hover { border-color: var(--cv-accent); }
+}
+.cv-tool-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.cv-tool-icon {
+  width: 42px; height: 42px;
+  border-radius: var(--cv-radius-sm);
+  background: var(--cv-icon-bg);
+  color: var(--cv-accent);
+  display: grid;
+  place-items: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+.cv-tag {
+  background: var(--cv-input);
+  color: var(--cv-muted);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: .8px;
+}
+.cv-tool-t { font-weight: 700; font-size: var(--fs-body); }
+.cv-tool-d { color: var(--cv-muted-2); font-size: var(--fs-small); flex: 1; }
+.cv-pill {
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: var(--fs-tag);
+  font-weight: 700;
+  background: var(--cv-accent-soft);
+  color: var(--cv-accent);
+}
+.cv-pill--muted { background: var(--cv-input); color: var(--cv-muted); }
+
+.cv-valuebox {
+  margin-top: 28px;
+  border: 1.5px solid var(--cv-accent);
+  border-radius: var(--cv-radius-lg);
+  background: var(--cv-surface-alt);
+  padding: 36px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 36px;
+  align-items: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .5);
+}
+.cv-h3 {
+  margin: 0 0 22px;
+  font-size: clamp(1.5rem, 1.3rem + 1vw, 1.875rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -.8px;
+}
+.cv-valuelist { display: grid; gap: 10px; font-size: var(--fs-body); }
+.cv-valuerow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--cv-border);
+  padding-bottom: 10px;
+}
+.cv-valuerow:last-child { border-bottom: 0; padding-bottom: 0; font-weight: 700; }
+/* `nowrap`: no celular a coluna do valor é estreita e "R$ 197" quebrava em
+   "R$" / "197", com o risco do line-through cortando as duas linhas. É a
+   coluna da esquerda que deve ceder espaço, não o número. */
+.cv-strike { color: var(--cv-muted-3); text-decoration: line-through; white-space: nowrap; }
+
+.cv-valueside { border-left: 1px solid var(--cv-border); padding-left: 36px; }
+/* Quando os dois blocos empilham, a borda lateral vira uma borda de topo. */
+@media (max-width: 47.99em) {
+  .cv-valuebox { padding: 24px; }
+  .cv-valueside {
+    border-left: 0;
+    border-top: 1px solid var(--cv-border);
+    padding-left: 0;
+    padding-top: 28px;
+  }
+}
+
+.cv-countpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--cv-accent-soft);
+  color: var(--cv-accent);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: var(--fs-tag);
+  font-weight: 800;
+  letter-spacing: .5px;
+  margin-bottom: 14px;
+}
+.cv-kicker { margin: 0 0 4px; color: var(--cv-text-2); font-size: var(--fs-tag); font-weight: 700; letter-spacing: 1.5px; }
+.cv-price-big {
+  margin: 0;
+  color: var(--cv-accent);
+  font-size: clamp(2.75rem, 2.1rem + 3.25vw, 3.75rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -1.5px;
+}
+.cv-price-note { margin: 4px 0 20px; color: var(--cv-text-2); font-size: var(--fs-body); }
+.cv-spots { margin: 12px 0 0; color: var(--cv-accent); font-size: var(--fs-small); font-weight: 700; }
+.cv-renew { margin: 6px 0 0; color: var(--cv-muted-2); font-size: var(--fs-tag); }
+
+.cv-num { font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------------------------
+   8. Checkout
+   O formulario vive dentro da secao da oferta (ver bloco 31): "o que voce
+   leva" e "pagar" viraram um bloco continuo. A barra vermelha que ficava
+   grudada aqui em cima saiu — era o segundo contador da pagina, competindo
+   com a tarja do card de preco. Por isso o box voltou a ter borda e raio
+   nos quatro cantos.
+   -------------------------------------------------------------------------- */
+.cv-checkout-box {
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-lg);
+  background: var(--cv-surface-alt);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  overflow: hidden;
+}
+/* O cabecalho da marca e filho direto deste grid. Sem ocupar a linha inteira ele
+   vira uma terceira coluna vazia ao lado do formulario no desktop. */
+@media (min-width: 48em) {
+  .cv-checkout-box { grid-template-columns: 1fr 1fr; }
+}
+.cv-checkout-form { padding: 2rem; }
+.cv-checkout-side {
+  padding: 2rem;
+  background: var(--cv-surface);
+  border-left: 1px solid var(--cv-border);
+  border-radius: 0 0 var(--cv-radius-lg) 0;
+}
+@media (max-width: 47.99em) {
+  .cv-checkout-form, .cv-checkout-side { padding: 1.375rem; }
+  .cv-checkout-side {
+    border-left: 0;
+    border-top: 1px solid var(--cv-border);
+    border-radius: 0 0 var(--cv-radius-lg) var(--cv-radius-lg);
+  }
+}
+
+.cv-label-sm { margin: 0 0 0.375rem; color: var(--cv-accent); font-size: var(--fs-tag); font-weight: 700; letter-spacing: 0.09375rem; }
+.cv-label-sm--muted { color: var(--cv-muted-3); margin-bottom: 0.875rem; }
+.cv-h2--form { margin: 0 0 1.25rem; font-size: clamp(1.5rem, 1.35rem + .75vw, 1.625rem); font-weight: 800; letter-spacing: -0.0375rem; }
+
+.cv-form { display: grid; gap: 0.875rem; }
+.cv-field {
+  display: grid;
+  gap: 0.375rem;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--cv-muted);
+}
+.cv-input {
+  background: var(--cv-input);
+  border: 1px solid var(--cv-border-strong);
+  border-radius: var(--cv-radius-sm);
+  padding: 0.875rem 1rem;
+  color: var(--cv-text);
+  /* 1rem (=16px) é o piso: abaixo disso o iOS dá zoom ao focar o campo. */
+  font-size: var(--fs-input);
+  font-family: inherit;
+  width: 100%;
+  min-block-size: var(--tap);
+}
+.cv-input:focus { border-color: var(--cv-accent); outline: none; }
+.cv-input[aria-invalid="true"] { border-color: var(--cv-danger); }
+
+.cv-field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.375rem), 1fr));
+  gap: 0.875rem;
+}
+
+.cv-formerror { margin: 0; color: var(--cv-danger); font-size: var(--fs-small); }
+.cv-btn--submit { margin-top: 0.375rem; padding: 1.125rem 1.5rem; }
+.cv-secure { margin: 0; color: var(--cv-muted-3); font-size: var(--fs-tag); text-align: center; }
+
+.cv-pix-wrap { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.cv-pix-qr {
+  width: 180px;
+  height: 180px;
+  background: #fff;
+  border-radius: var(--cv-radius);
+  padding: 12px;
+  flex: 0 0 auto;
+}
+.cv-pix-qr img { width: 100%; height: 100%; display: block; }
+.cv-pix-side { flex: 1; min-width: 200px; }
+.cv-pix-title { color: var(--cv-muted-3); font-size: var(--fs-tag); font-weight: 700; letter-spacing: .8px; margin-bottom: 6px; }
+.cv-pix-code {
+  background: var(--cv-input);
+  border: 1px solid var(--cv-border-strong);
+  border-radius: var(--cv-radius-sm);
+  padding: 12px;
+  font-size: var(--fs-tag);
+  color: var(--cv-muted);
+  /* anywhere (não break-all) evita estourar a caixa em 320px */
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 6.5rem;
+  overflow-y: auto;
+}
+.cv-btn--copy { margin-top: 10px; width: 100%; padding: 12px; border-radius: var(--cv-radius-sm); font-size: var(--fs-small); text-transform: none; letter-spacing: normal; }
+.cv-pix-expiry { margin: 10px 0 0; color: var(--cv-accent); font-size: var(--fs-small); font-weight: 700; }
+.cv-link-btn {
+  margin-top: 18px;
+  background: transparent;
+  border: 0;
+  color: var(--cv-muted-3);
+  font-size: var(--fs-small);
+  text-decoration: underline;
+  padding: 8px 0;
+  min-block-size: var(--tap);
+}
+
+/* Resumo do pedido. O comprador precisa confirmar "o que" e "quanto" num olhar:
+   miniatura pequena, lista do item / bloco de custos / garantias separados por
+   regua, e o total como o numero dominante logo abaixo do desconto.
+   Medidas em rem para acompanharem o tamanho de fonte do usuario. */
+.cv-order-item {
+  display: flex;
+  gap: 0.875rem;
+  align-items: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--cv-border);
+}
+.cv-order-img {
+  inline-size: 4.5rem;
+  block-size: 5.25rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+  padding: 0.375rem;
+  border: 1px solid var(--cv-border-strong);
+  border-radius: 0.5rem;
+  background:
+    radial-gradient(ellipse at 50% 25%, var(--cv-cta-soft), transparent 65%),
+    var(--cv-input);
+}
+.cv-order-t { font-weight: 700; font-size: var(--fs-body); }
+.cv-order-d {
+  margin-top: 0.125rem;
+  color: var(--cv-muted-2);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+}
+.cv-order-rows {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 0;
+  font-size: var(--fs-small);
+  color: var(--cv-muted);
+}
+.cv-order-row { display: flex; justify-content: space-between; gap: 0.75rem; }
+.cv-order-row--accent { color: var(--cv-accent); font-weight: 700; }
+/* Total emoldurado por reguas: e o dado que o comprador confere antes de pagar. */
+.cv-order-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.875rem 0 1.125rem;
+  border-block: 1px solid var(--cv-border);
+}
+.cv-order-total b { font-weight: 700; font-size: var(--fs-body); }
+.cv-order-total span {
+  color: var(--cv-accent);
+  font-weight: 800;
+  font-size: clamp(1.75rem, 1.45rem + 1.1vw, 2.25rem);
+  line-height: 1;
+  letter-spacing: -0.0625rem;
+}
+.cv-checks {
+  display: grid;
+  gap: 0.625rem;
+  padding-top: 1.125rem;
+  font-size: var(--fs-small);
+  color: var(--cv-muted);
+}
+.cv-check { display: flex; gap: 0.625rem; align-items: center; }
+.cv-check i { color: var(--cv-accent); font-style: normal; }
+
+.cv-social-proof {
+  margin-top: 1.375rem;
+  background: var(--cv-input);
+  border-radius: var(--cv-radius);
+  padding: 0.875rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.cv-avatars { display: flex; }
+.cv-avatars span {
+  inline-size: 1.875rem;
+  block-size: 1.875rem;
+  border-radius: 50%;
+  border: 0.125rem solid var(--cv-surface);
+}
+.cv-avatars span:nth-child(1) { background: var(--cv-border-strong); }
+.cv-avatars span:nth-child(2) { background: #3a4139; margin-left: -0.625rem; }
+.cv-avatars span:nth-child(3) { background: #4a5149; margin-left: -0.625rem; }
+.cv-social-proof div { font-size: var(--fs-tag); color: var(--cv-muted); }
+.cv-social-proof b { color: var(--cv-text); }
+
+/* --------------------------------------------------------------------------
+   9. FAQ
+   -------------------------------------------------------------------------- */
+.cv-section--faq { padding-block: 24px 40px; }
+.cv-faq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 36px;
+  align-items: start;
+}
+.cv-faq-intro p { margin: 0; color: var(--cv-muted); font-size: var(--fs-body); max-width: 260px; }
+.cv-faq-list { display: grid; gap: 10px; min-width: 0; }
+@media (min-width: 48em) { .cv-faq-list { grid-column: span 2; } }
+
+.cv-faq-item { background: var(--cv-surface); border: 1px solid var(--cv-border); border-radius: var(--cv-radius); overflow: hidden; }
+.cv-faq-q {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background: transparent;
+  border: 0;
+  color: var(--cv-text);
+  padding: 16px 20px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-align: left;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-faq-q:hover { background: #111511; }
+}
+.cv-faq-icon { color: var(--cv-accent); font-size: 1.5rem; line-height: 1; font-weight: 400; }
+.cv-faq-a { margin: 0; padding: 0 20px 18px; color: var(--cv-muted); font-size: var(--fs-body); }
+.cv-faq-a[hidden] { display: none; }
+
+.cv-cta-strip {
+  margin-top: 32px;
+  border: 1px solid var(--cv-border);
+  border-radius: 14px;
+  background: var(--cv-surface);
+  padding: 18px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.cv-cta-strip p { margin: 0; font-weight: 700; font-size: 1.125rem; flex: 1; text-align: center; min-width: 240px; }
+.cv-btn--strip { padding: 12px 40px; font-size: var(--fs-small); letter-spacing: .8px; }
+@media (max-width: 47.99em) {
+  .cv-cta-strip { padding: 18px; }
+  .cv-btn--strip { width: 100%; }
+}
+
+/* --------------------------------------------------------------------------
+   10. Rodapé
+   -------------------------------------------------------------------------- */
+.cv-footer { border-top: 1px solid var(--cv-border); background: var(--cv-bg); }
+.cv-footer-grid {
+  max-width: var(--container);
+  margin-inline: auto;
+  padding: 44px var(--gutter) 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 44px;
+}
+.cv-footer-title { margin: 22px 0 6px; font-weight: 700; font-size: var(--fs-small); }
+.cv-legal { margin: 0; color: var(--cv-muted); font-size: var(--fs-tag); line-height: 1.55; }
+.cv-footer-links { display: flex; gap: 28px; margin-top: 20px; font-size: var(--fs-small); font-weight: 700; }
+.cv-footer-links a { min-block-size: var(--tap); display: inline-flex; align-items: center; }
+
+.cv-age { display: flex; align-items: center; gap: 16px; }
+.cv-age-badge {
+  width: 52px; height: 52px;
+  border: 2px solid var(--cv-text);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: var(--fs-body);
+  flex: 0 0 auto;
+}
+.cv-age-t { font-weight: 800; font-size: var(--fs-small); letter-spacing: .5px; }
+.cv-age-d { color: var(--cv-muted-2); font-size: var(--fs-tag); letter-spacing: .5px; }
+.cv-help-t { margin: 24px 0 6px; font-weight: 800; font-size: var(--fs-small); letter-spacing: .5px; }
+
+.cv-socials { display: flex; align-items: center; gap: 18px; margin-top: 22px; flex-wrap: wrap; }
+.cv-socials-label { color: var(--cv-accent); font-weight: 800; font-size: var(--fs-small); letter-spacing: .8px; }
+.cv-social {
+  color: var(--cv-accent);
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--tap);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-social:hover { color: var(--cv-text); }
+}
+
+.cv-footer-bar { border-top: 1px solid var(--cv-border); }
+.cv-footer-bar-inner {
+  max-width: var(--container);
+  margin-inline: auto;
+  padding: 18px var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.cv-brand { font-weight: 800; font-size: 1.25rem; letter-spacing: -.5px; }
+.cv-brand i { color: var(--cv-accent); font-style: normal; }
+.cv-copy { color: var(--cv-muted-2); font-size: var(--fs-tag); }
+
+/* --------------------------------------------------------------------------
+   11. Botão flutuante do WhatsApp
+   -------------------------------------------------------------------------- */
+.cv-wa {
+  position: fixed;
+  /* env() respeita a barra de gestos do iOS e o notch; exige viewport-fit=cover */
+  inset-inline-end: max(22px, env(safe-area-inset-right));
+  inset-block-end: max(22px, env(safe-area-inset-bottom));
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  border-radius: 50%;
+  background: var(--cv-accent);
+  color: var(--cv-bg);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  z-index: 50;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-wa:hover { background: var(--cv-accent-hover); color: var(--cv-bg); }
+}
+.cv-wa[hidden] { display: none; }
+
+/* --------------------------------------------------------------------------
+   12. Blocos de escassez — desligáveis pelo admin
+   -------------------------------------------------------------------------- */
+[data-cv-scarcity][hidden] { display: none !important; }
+
+/* --------------------------------------------------------------------------
+   13. Utilitários
+   Existem porque a CSP da página roda sem 'unsafe-inline': nenhum style=""
+   sobrevive no HTML.
+   -------------------------------------------------------------------------- */
+.cv-mb0 { margin-bottom: 0; }
+.cv-mb6 { margin-bottom: 6px; }
+.cv-mb20 { margin-bottom: 20px; }
+.cv-mt14 { margin-top: 14px; }
+.cv-on { color: var(--cv-text); }
+.cv-link-strong { font-weight: 700; }
+
+/* --------------------------------------------------------------------------
+   14. Página de obrigado
+   -------------------------------------------------------------------------- */
+.cv-thanks { display: grid; place-items: center; min-block-size: 80svh; padding-block: clamp(2rem, 6vw, 4rem); }
+.cv-thanks-card {
+  width: min(100%, 40rem);
+  background: var(--cv-surface-alt);
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-lg);
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+}
+.cv-thanks-check {
+  inline-size: 4rem; block-size: 4rem;
+  border-radius: 50%;
+  background: var(--cv-accent-soft);
+  color: var(--cv-accent);
+  display: grid; place-items: center;
+  margin-bottom: 20px;
+}
+.cv-thanks-steps { display: grid; gap: 4px; margin: 28px 0; }
+.cv-thanks-step {
+  display: flex; gap: 20px; align-items: flex-start;
+  padding-block: 16px;
+  border-bottom: 1px solid var(--cv-border);
+}
+.cv-thanks-step:last-child { border-bottom: 0; }
+.cv-thanks-order {
+  display: flex; gap: 32px; flex-wrap: wrap;
+  margin: 0 0 24px;
+  padding: 16px;
+  background: var(--cv-input);
+  border-radius: var(--cv-radius);
+}
+.cv-thanks-order dt { color: var(--cv-muted-3); font-size: var(--fs-tag); font-weight: 700; letter-spacing: .8px; }
+.cv-thanks-order dd { margin: 4px 0 0; font-size: var(--fs-lead); font-weight: 700; }
+
+/* --------------------------------------------------------------------------
+   15. Documentos (termos, privacidade)
+   -------------------------------------------------------------------------- */
+.cv-doc { width: min(100% - 3rem, 46rem); margin-inline: auto; padding-block: clamp(2rem, 6vw, 4rem); }
+.cv-doc h1 { font-size: clamp(1.75rem, 1.35rem + 2vw, 2.25rem); font-weight: 800; letter-spacing: -.8px; margin: 0 0 8px; }
+.cv-doc .cv-doc-date { color: var(--cv-muted-3); font-size: var(--fs-small); margin: 0 0 32px; }
+.cv-doc h2 { font-size: var(--fs-lead); font-weight: 800; margin: 32px 0 10px; color: var(--cv-accent); }
+.cv-doc p, .cv-doc li { color: var(--cv-muted); font-size: var(--fs-body); line-height: 1.65; max-width: 65ch; }
+.cv-doc ul { padding-left: 1.25rem; display: grid; gap: 6px; }
+.cv-doc a { font-weight: 600; }
+.cv-doc-note {
+  border: 1px solid var(--cv-border);
+  border-left: 3px solid var(--cv-accent);
+  border-radius: var(--cv-radius-sm);
+  background: var(--cv-surface);
+  padding: 16px 18px;
+  margin: 28px 0;
+}
+.cv-doc-back { display: inline-flex; align-items: center; min-block-size: var(--tap); font-weight: 700; }
+
+/* --------------------------------------------------------------------------
+   16. Urgência — o cronômetro em vermelho
+   O contador é o único elemento da página que comunica perda; o amarelo da
+   marca o deixava indistinguível do resto. Vermelho separa "oferta" de
+   "tempo acabando".
+   -------------------------------------------------------------------------- */
+:root {
+  --cv-alert: #ff4d4d;
+  --cv-alert-soft: rgba(255, 77, 77, .14);
+  /* Fundo sólido da barra de urgência. 7,70:1 com branco, 4,73:1 com o
+     amarelo do cronômetro — os dois passam em AA. */
+  --cv-alert-bg: #a51616;
+  --cv-alert-ink: #ffffff;
+  /* Vermelho escuro: o único que mantém contraste legível sobre o amarelo
+     da barra do checkout (o #ff4d4d sobre #f5c518 fica ilegível). */
+  --cv-alert-on-accent: #8a1414;
+}
+
+/* Tarja "OFERTA TERMINA EM" na caixa de valor: mesma linguagem da barra. */
+.cv-countpill {
+  background: var(--cv-alert-bg);
+  color: var(--cv-alert-ink);
+}
+.cv-countpill [data-cv-countdown] { color: var(--cv-accent); }
+
+/* Barra vermelha do checkout: o relógio em amarelo é o único ponto de cor
+   quente sobre o vermelho — 4,73:1, medido. */
+.cv-checkout-bar [data-cv-countdown] {
+  color: var(--cv-accent);
+  font-weight: 800;
+  font-size: 1.25rem;
+}
+
+/* Prazo de expiração do próprio Pix */
+.cv-pix-expiry { color: var(--cv-alert); }
+
+/* --------------------------------------------------------------------------
+   17. Checkout de demonstração
+   -------------------------------------------------------------------------- */
+.cv-sim-warn {
+  border: 1px solid var(--cv-alert);
+  border-left-width: 3px;
+  border-radius: var(--cv-radius-sm);
+  background: var(--cv-alert-soft);
+  color: var(--cv-text-2);
+  padding: 12px 14px;
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.cv-sim-warn b { color: var(--cv-alert); }
+.cv-sim-warn[hidden] { display: none; }
+
+.cv-pix-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.cv-btn--sim {
+  background: transparent;
+  border: 1.5px dashed var(--cv-alert);
+  color: var(--cv-alert);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--fs-small);
+  padding: 12px 20px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-btn--sim:hover { background: var(--cv-alert-soft); color: var(--cv-alert); }
+}
+.cv-btn--sim[hidden] { display: none; }
+.cv-link-btn { margin-top: 0; }
+
+/* --------------------------------------------------------------------------
+   18. Gatilhos do checkout
+   O que a ferramenta entrega, ao lado do formulário e do Pix. Fica na coluna
+   do resumo, então aparece nos dois passos sem duplicar markup.
+   -------------------------------------------------------------------------- */
+.cv-value {
+  margin-top: 1.375rem;
+  padding-top: 1.375rem;
+  border-top: 1px solid var(--cv-border);
+}
+.cv-value-title {
+  margin: 0 0 0.875rem;
+  color: var(--cv-accent);
+  font-size: var(--fs-tag);
+  font-weight: 700;
+  letter-spacing: 0.09375rem;
+  text-transform: uppercase;
+}
+.cv-value-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.875rem;
+}
+.cv-value-icon {
+  flex: 0 0 2.125rem;
+  block-size: 2.125rem;
+  border-radius: var(--cv-radius-sm);
+  background: var(--cv-accent-soft);
+  color: var(--cv-accent);
+  display: grid;
+  place-items: center;
+}
+.cv-value-item > div > b { display: block; font-size: var(--fs-small); font-weight: 700; }
+.cv-value-item > div > span { display: block; color: var(--cv-muted-2); font-size: var(--fs-tag); line-height: 1.45; }
+
+/* Amostra do que a ferramenta devolve — a mesma conta do card do topo. */
+.cv-value-demo {
+  margin-top: 1rem;
+  background: var(--cv-input);
+  border: 1px solid var(--cv-border-strong);
+  border-radius: var(--cv-radius);
+  padding: 0.75rem 0.875rem;
+  display: grid;
+  gap: 0.4375rem;
+}
+.cv-value-demo-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: var(--fs-small);
+  color: var(--cv-muted);
+}
+.cv-value-demo-row b { color: var(--cv-text); font-weight: 700; }
+.cv-value-demo-row--profit {
+  border-top: 1px solid var(--cv-border-strong);
+  padding-top: 0.4375rem;
+}
+.cv-value-demo-row--profit b { color: var(--cv-accent); }
+.cv-value-note {
+  margin: 0.625rem 0 0;
+  color: var(--cv-muted-3);
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+}
+
+/* Passos que esperam do outro lado do pagamento, dentro do bloco do Pix. */
+.cv-next {
+  margin-top: 22px;
+  padding: 16px 18px;
+  background: var(--cv-input);
+  border: 1px solid var(--cv-border-strong);
+  border-radius: var(--cv-radius);
+}
+.cv-next-title {
+  margin: 0 0 12px;
+  color: var(--cv-accent);
+  font-size: var(--fs-tag);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.cv-next-item { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 11px; }
+.cv-next-item:last-child { margin-bottom: 0; }
+.cv-next-n {
+  flex: 0 0 22px;
+  block-size: 22px;
+  border-radius: 50%;
+  background: var(--cv-accent-soft);
+  color: var(--cv-accent);
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+}
+.cv-next-item > div > b { display: block; font-size: var(--fs-small); font-weight: 700; }
+.cv-next-item > div > span { display: block; color: var(--cv-muted-2); font-size: var(--fs-tag); line-height: 1.45; }
+
+/* Faixa de confiança sob o formulário. Além de responder às objeções no
+   momento da decisão, equilibra a altura das duas colunas do checkout. */
+.cv-trust {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--cv-border);
+  display: grid;
+  gap: 16px;
+}
+.cv-trust-item { display: flex; gap: 12px; align-items: flex-start; }
+.cv-trust-icon {
+  flex: 0 0 30px;
+  block-size: 30px;
+  border-radius: 50%;
+  background: var(--cv-accent-soft);
+  color: var(--cv-accent);
+  display: grid;
+  place-items: center;
+}
+.cv-trust-item > div > b { display: block; font-size: var(--fs-small); font-weight: 700; }
+.cv-trust-item > div > span { display: block; color: var(--cv-muted-2); font-size: var(--fs-tag); line-height: 1.5; }
+.cv-trust-item [data-cv-price] { color: var(--cv-text-2); font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   19. Vídeo em destaque
+   Borda dupla (verde + brilho) para o quadro não se perder no fundo escuro,
+   e um CTA logo abaixo, no momento em que a pessoa acabou de assistir.
+   -------------------------------------------------------------------------- */
+.cv-video-frame {
+  border: 2px solid var(--cv-cta);
+  box-shadow:
+    0 0 0 6px var(--cv-cta-soft),
+    0 24px 60px rgba(0, 0, 0, .55),
+    0 0 48px var(--cv-cta-glow);
+}
+/* O botão de play acompanha a cor de ação. */
+.cv-video-play-circle {
+  background: var(--cv-cta);
+  box-shadow: 0 0.75rem 2.5rem var(--cv-cta-glow);
+}
+.cv-video-play i { border-left-color: var(--cv-cta-ink); }
+
+/* Etiqueta no canto do quadro */
+.cv-video-tag {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--cv-alert-bg);
+  color: var(--cv-alert-ink);
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.cv-video-tag i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--cv-alert-ink);
+  animation: cv-pulse 1.4s ease-in-out infinite;
+}
+@keyframes cv-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.7); }
+}
+
+.cv-video-cta { margin-top: 1.125rem; text-align: center; }
+.cv-video-cta .cv-btn { width: 100%; }
+@media (min-width: 48em) {
+  .cv-video-cta .cv-btn { width: auto; }
+}
+
+/* --------------------------------------------------------------------------
+   20. Checkout reorganizado
+   Cabeçalho com a logo e a imagem do produto no topo do resumo, para quem
+   chega direto no checkout ver o que está comprando antes dos números.
+   -------------------------------------------------------------------------- */
+.cv-checkout-brand {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--cv-border);
+  background: var(--cv-surface);
+}
+.cv-checkout-brand img { height: 30px; width: auto; display: block; }
+.cv-checkout-brand-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--cv-muted-2);
+  font-size: var(--fs-tag);
+  font-weight: 600;
+}
+.cv-checkout-brand-secure svg { color: var(--cv-cta); }
+@media (max-width: 47.99em) {
+  .cv-checkout-brand { padding: 14px 22px; }
+  .cv-checkout-brand img { height: 24px; }
+}
+
+/* Logo na navegação: imagem no lugar do texto composto. */
+.cv-logo-img { height: 34px; width: auto; display: block; }
+@media (max-width: 47.99em) { .cv-logo-img { height: 28px; } }
+
+/* --------------------------------------------------------------------------
+   21. Hero no celular — 90% do tráfego
+   A primeira tela precisa entregar, nesta ordem: quem somos (logo), o
+   headline, o que custa e o botão. Tudo o que competia com isso saiu da
+   dobra: os links de seção (a página é linear, rolar alcança tudo) e a foto
+   clara demais atrás do texto.
+   -------------------------------------------------------------------------- */
+@media (max-width: 47.99em) {
+  /* Navegação numa linha: logo à esquerda, CTA à direita. */
+  .cv-nav { flex-wrap: nowrap; padding-block: 14px; gap: 12px; }
+  .cv-nav-links { width: auto; gap: 0; justify-content: flex-end; }
+  .cv-navlink { display: none; }
+  .cv-btn--ghost { padding: 9px 14px; font-size: var(--fs-small); min-block-size: 2.75rem; }
+
+  /* Véu forte: o texto ganha da foto, sempre. */
+  .cv-hero-veil {
+    background: linear-gradient(180deg,
+      rgba(7, 10, 8, .55) 0%,
+      rgba(7, 10, 8, .72) 38%,
+      rgba(7, 10, 8, .93) 72%,
+      var(--cv-bg) 100%);
+  }
+  .cv-hero-bg { object-position: center 45%; }
+
+  /* Headline primeiro, grande, com respiro curto até o preço e o botão. */
+  .cv-hero-grid { padding-block: 22px 36px; gap: 32px; }
+  .cv-eyebrow { margin-bottom: 10px; font-size: var(--fs-micro); }
+  .cv-h1 {
+    font-size: clamp(2.125rem, 1.35rem + 4.6vw, 2.75rem);
+    line-height: 1.04;
+    margin-bottom: 14px;
+  }
+  .cv-hero-sub { font-size: var(--fs-body); margin-bottom: 20px; max-width: none; }
+  .cv-price-label { margin-bottom: 0; }
+  .cv-price-hero { font-size: 2.5rem; margin-bottom: 16px; }
+
+  /* O CTA ocupa a largura toda: alvo grande, polegar alcança. */
+  .cv-hero-grid .cv-btn { width: 100%; }
+  .cv-hero-note { margin-top: 14px; font-size: var(--fs-small); }
+
+  /* O card da ferramenta vem depois do CTA e mais compacto. */
+  .cv-hero-card { border-radius: 12px; }
+  .cv-caption { font-size: var(--fs-micro); }
+}
+
+/* --------------------------------------------------------------------------
+   22. Centralizacoes do celular
+   No celular os titulos de secao e o card de preco ficam centralizados.
+   Ficam de fora de proposito: o hero (composicao propria, com preco e CTA
+   alinhados a esquerda) e o formulario do checkout (rotulo de campo
+   centralizado atrapalha a leitura e o preenchimento).
+   -------------------------------------------------------------------------- */
+@media (max-width: 47.99em) {
+  .cv-section--video .cv-eyebrow,
+  .cv-section--video .cv-h2,
+  .cv-section--video .cv-h2-sub,
+  .cv-section--incluido .cv-h2--small,
+  .cv-section--incluido .cv-claim,
+  .cv-section--incluido .cv-h2-sub,
+  .cv-oferta-head,
+  .cv-oferta-note,
+  .cv-faq-intro { text-align: center; }
+
+  /* Card de preco: titulo e a coluna do valor. A lista de itens continua
+     alinhada nas bordas, que e o que deixa o "de/por" legivel. */
+  .cv-valuebox .cv-h3,
+  .cv-valueside { text-align: center; }
+  .cv-valueside .cv-btn-note { justify-content: center; }
+}
+
+/* O CTA do video e centralizado em qualquer largura, entao a nota abaixo dele
+   (que e flex) tambem precisa centralizar os proprios filhos. */
+.cv-video-cta .cv-btn-note { justify-content: center; }
+
+/* --------------------------------------------------------------------------
+   23. Card "Aposta Segura" — a ferramenta desenhada em codigo
+   Substitui o JPEG estatico que o hero usava. Fidelidade ao design aprovado:
+   as cores sao as do proprio card (ouro sobre marrom escuro), e por isso
+   moram em tokens `--cv-as-*` proprios em vez de `--cv-accent`: o admin
+   repinta a LP inteira pela tela de Aparencia e nao deve despintar a
+   captura da ferramenta por acidente.
+
+   Cuidado: a CSP da pagina e `style-src 'self'`, sem `unsafe-inline`. O
+   arquivo de referencia era 100% `style=""` e nenhum daqueles atributos
+   sobreviveria. Tudo aqui e classe; o JS so escreve texto e, quando precisa
+   de numero, usa `el.style.setProperty` (CSSOM nao passa pela CSP).
+   -------------------------------------------------------------------------- */
+.cv-as {
+  --cv-as-bg: #15130f;
+  --cv-as-border: #6b4f1c;
+  --cv-as-tile: #1a1712;
+  --cv-as-tile-border: #2c261c;
+  --cv-as-gold: #e2a72c;
+  --cv-as-gold-ink: #211a08;
+  --cv-as-ink: #f2efe9;
+  --cv-as-ink-2: #a6a19a;
+  --cv-as-ink-3: #8b8781;
+  --cv-as-rule: #241f18;
+  --cv-as-rule-2: #201b15;
+
+  background: var(--cv-as-bg);
+  border: 1px solid var(--cv-as-border);
+  border-radius: 14px;
+  padding: 14px 14px 4px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .55);
+  /* O card vive em duas larguras muito diferentes (coluna do hero e largura
+     cheia da secao). Um container query por largura mantem a tabela legivel
+     nas duas sem depender da largura da janela. */
+  container-type: inline-size;
+}
+@media (min-width: 48em) { .cv-as { padding: 18px 18px 8px; } }
+
+.cv-as-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.cv-as-match { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.cv-as-teams { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cv-as-crest {
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: .625rem;
+  font-weight: 700;
+  flex: none;
+}
+.cv-as-crest--home { background: #1c8a4b; }
+.cv-as-crest--away { background: #d81f2e; }
+.cv-as-team { color: var(--cv-as-ink); font-size: .875rem; font-weight: 700; }
+.cv-as-vs { color: var(--cv-as-ink-3); font-size: .8125rem; }
+
+.cv-as-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cv-as-meta span { color: var(--cv-as-ink-2); font-size: .8125rem; white-space: nowrap; }
+.cv-as-when { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cv-as-when > span { color: var(--cv-as-ink-3); font-size: .78125rem; white-space: nowrap; }
+
+.cv-as-chip {
+  background: var(--cv-as-gold);
+  color: var(--cv-as-gold-ink);
+  font-size: .75rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.cv-as-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; }
+.cv-as-seal {
+  background: var(--cv-as-gold);
+  color: var(--cv-as-gold-ink);
+  font-size: .71875rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.cv-as-pct {
+  color: var(--cv-as-gold);
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-as-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+.cv-as-kpi {
+  background: var(--cv-as-tile);
+  border: 1px solid var(--cv-as-tile-border);
+  border-radius: 10px;
+  padding: 10px 11px;
+  min-width: 0;
+}
+.cv-as-kpi-l {
+  color: var(--cv-as-ink-3);
+  font-size: .625rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+}
+.cv-as-kpi-v {
+  color: var(--cv-as-ink);
+  font-size: .9375rem;
+  font-weight: 700;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cv-as-kpi--gold .cv-as-kpi-v { color: var(--cv-as-gold); }
+
+.cv-as-table { margin-top: 14px; }
+/* Proporcoes do original. No celular a coluna da casa de aposta encolhe: ela
+   esta desfocada de proposito (e o que a ferramenta paga entrega), entao e a
+   que menos perde ao ficar estreita. */
+.cv-as-row {
+  display: grid;
+  grid-template-columns: .95fr .7fr .62fr 1.1fr .95fr;
+  gap: 6px;
+  align-items: center;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--cv-as-rule-2);
+}
+.cv-as-row > span { font-size: .75rem; color: var(--cv-as-ink); min-width: 0; }
+.cv-as-row > span:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
+
+.cv-as-row--head {
+  padding: 0 2px 9px;
+  border-bottom: 1px solid var(--cv-as-rule);
+}
+.cv-as-row--head > span {
+  color: var(--cv-as-ink-3);
+  font-size: .5625rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+}
+
+/* O nome da casa de aposta e o unico dado coberto: e ele que a pessoa compra.
+   O blur e visual — o texto por baixo nao nomeia casa nenhuma. */
+.cv-as-house { color: #6f6a63; filter: blur(3.5px); user-select: none; }
+
+.cv-as-pctinline { color: #7c766e; font-size: .6875rem; }
+
+.cv-as-row--total { border-bottom: 0; padding-bottom: 14px; }
+.cv-as-row--total > span { font-weight: 700; }
+
+/* --------------------------------------------------------------------------
+   24. Hero: card entre o texto e o botao (celular)
+   No celular a ordem que converte e headline -> preco -> prova -> botao: a
+   pessoa ve o que a ferramenta devolve antes de decidir tocar. No desktop o
+   layout original e preservado com grid-template-areas — texto e botao
+   empilhados a esquerda, card ocupando as duas linhas a direita.
+   -------------------------------------------------------------------------- */
+.cv-hero-grid {
+  grid-template-columns: 1fr;
+  grid-template-areas: 'texto' 'prova' 'acao';
+  gap: 24px;
+}
+.cv-hero-texto { grid-area: texto; }
+.cv-hero-prova { grid-area: prova; }
+.cv-hero-acao  { grid-area: acao; }
+
+@media (min-width: 64em) {
+  .cv-hero-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'texto prova'
+      'acao  prova';
+    gap: 0 48px;
+    align-items: start;
+  }
+  .cv-hero-prova { align-self: center; }
+}
+
+.cv-hero-prova .cv-eyebrow--muted { margin-bottom: 12px; }
+
+/* --------------------------------------------------------------------------
+   25. VSL: modal com foco total no video
+   Sem controles nativos de proposito — o pedido era nao poder voltar nem
+   adiantar. Sobram o botao de som e o X, que e a saida obrigatoria: um modal
+   sem saida visivel prende quem entrou por engano.
+   -------------------------------------------------------------------------- */
+.cv-vsl {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(3, 5, 4, .93);
+  backdrop-filter: blur(6px);
+}
+.cv-vsl-box {
+  position: relative;
+  inline-size: 100%;
+  max-inline-size: 62rem;
+  display: grid;
+  gap: 14px;
+}
+
+.cv-vsl-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  border: 2px solid var(--cv-cta);
+  box-shadow: 0 0 0 6px var(--cv-cta-soft), 0 30px 80px rgba(0, 0, 0, .7);
+}
+.cv-vsl-stage video {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+/* Camada transparente sobre o video: intercepta o duplo-toque que, no iOS,
+   avanca 10 segundos mesmo com os controles desligados. */
+.cv-vsl-shield { position: absolute; inset: 0; z-index: 1; }
+
+.cv-vsl-close {
+  position: absolute;
+  top: -0.75rem;
+  right: -0.5rem;
+  z-index: 4;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  border-radius: 50%;
+  border: 1px solid var(--cv-border-strong);
+  background: var(--cv-surface);
+  color: var(--cv-text);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+}
+@media (min-width: 48em) { .cv-vsl-close { top: -1.25rem; right: -1.25rem; inline-size: 3rem; block-size: 3rem; } }
+
+.cv-vsl-sound {
+  position: absolute;
+  bottom: 0.875rem;
+  left: 0.875rem;
+  z-index: 3;
+  min-block-size: 2.75rem;
+  padding-inline: 14px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(3, 5, 4, .72);
+  color: var(--cv-text);
+  font-size: var(--fs-tag);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Barra de progresso: e um indicador de leitura, nao um controle. Sem
+   role="slider", sem foco e sem clique — arrastar aqui nao move o video. */
+.cv-vsl-bar {
+  --cv-vsl-p: 0;
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 3;
+  block-size: 4px;
+  background: rgba(255, 255, 255, .16);
+  pointer-events: none;
+}
+.cv-vsl-bar i {
+  display: block;
+  block-size: 100%;
+  inline-size: calc(var(--cv-vsl-p) * 100%);
+  background: var(--cv-cta);
+  box-shadow: 0 0 12px var(--cv-cta-glow);
+}
+
+.cv-vsl-foot { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.cv-vsl-foot .cv-btn { width: 100%; }
+@media (min-width: 48em) { .cv-vsl-foot .cv-btn { width: auto; } }
+.cv-vsl-foot .cv-btn-note { justify-content: center; margin: 0; }
+
+/* O modal aberto congela a pagina atras dele. */
+body.cv-locked { overflow: hidden; }
+
+/* --------------------------------------------------------------------------
+   27. Entrega principal e ferramentas bonus
+   -------------------------------------------------------------------------- */
+.cv-deliver {
+  display: grid;
+  gap: 24px;
+  margin-bottom: 40px;
+}
+/* Voltou para `center`. O `start` tinha razão de ser quando a direita era uma
+   pilha alta (filtros + botão + card) e centralizar abria uns 450px de vazio
+   acima do texto. Hoje a direita é uma única imagem em retrato: com `start`,
+   o texto cola no topo e sobra vazio embaixo dele — o mesmo defeito,
+   espelhado. A coluna da imagem também encolheu, porque um mockup não
+   precisa da largura que a tabela do card precisava. */
+@media (min-width: 64em) {
+  .cv-deliver {
+    grid-template-columns: minmax(0, 1.06fr) minmax(0, .94fr);
+    gap: 56px;
+    align-items: center;
+  }
+}
+
+.cv-deliver-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  padding: 6px 13px;
+  background: var(--cv-cta-soft);
+  color: var(--cv-cta);
+  font-size: var(--fs-tag);
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.cv-deliver-list { display: grid; gap: 12px; margin: 18px 0 0; padding: 0; list-style: none; }
+.cv-deliver-list li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  color: var(--cv-text-3);
+  font-size: var(--fs-body);
+}
+.cv-deliver-list svg { flex: none; margin-top: 3px; color: var(--cv-cta); }
+.cv-deliver-list b { color: var(--cv-text); }
+
+.cv-bonus-head { margin-bottom: 14px; }
+.cv-bonus-head .cv-h2--small { margin-bottom: 6px; }
+.cv-bonus-head p { margin: 0; color: var(--cv-muted); font-size: var(--fs-body); }
+
+.cv-tool--main {
+  border-color: #6b4f1c;
+  background: linear-gradient(180deg, rgba(226, 167, 44, .07), transparent 60%), var(--cv-surface);
+}
+.cv-tool-flag {
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--cv-cta-soft);
+  color: var(--cv-cta);
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   28. Depoimentos — carrossel dos relatos reais
+   Os cards ja vem prontos como imagem (foto, nome e cidade da pessoa). A
+   transcricao vai no `alt`: leitor de tela e indexacao leem o relato inteiro.
+   -------------------------------------------------------------------------- */
+.cv-section--relatos {
+  max-width: none;
+  padding-inline: 0;
+  padding-block: 40px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-block: 1px solid var(--cv-cta-soft);
+  background: var(--cv-surface-alt);
+}
+.cv-relatos-head { max-width: var(--container); margin-inline: auto; padding-inline: var(--gutter); margin-bottom: 22px; }
+.cv-relatos-head .cv-eyebrow { margin-bottom: 8px; }
+.cv-relatos-head .cv-h2 { margin-bottom: 6px; }
+
+.cv-relatos-track { display: flex; width: max-content; animation: cv-ticker 46s linear infinite; }
+@media (min-width: 64em) { .cv-relatos-track { animation-duration: 68s; } }
+.cv-relatos-track ul {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cv-relatos-track li { flex: 0 0 auto; padding-inline: 8px; }
+.cv-relatos-track img {
+  display: block;
+  inline-size: clamp(16.125rem, 72vw, 26.25rem);
+  block-size: auto;
+  border-radius: 14px;
+}
+@media (min-width: 48em) { .cv-relatos-track img { inline-size: clamp(20rem, 34vw, 26.25rem); } }
+
+@keyframes cv-ticker {
+  from { transform: translateX(0); }
+  /* -50%: a faixa contem a lista duas vezes, entao meia volta e a emenda. */
+  to   { transform: translateX(-50%); }
+}
+
+/* Movimento reduzido: a faixa para e vira rolagem manual. Sem isto os
+   relatos ficariam congelados no primeiro card e os outros cinco,
+   inalcancaveis — o bloco global de reduced-motion no topo do arquivo zera
+   a duracao da animacao, nao a substitui. */
+@media (prefers-reduced-motion: reduce) {
+  .cv-relatos-track {
+    animation: none;
+    width: auto;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+  .cv-relatos-track li { scroll-snap-align: center; }
+  .cv-relatos-track ul[aria-hidden="true"] { display: none; }
+}
+
+/* Sombra nas pontas: sugere que a faixa continua fora da tela. */
+.cv-relatos-fade {
+  position: absolute;
+  inset-block: 0;
+  z-index: 2;
+  inline-size: 2rem;
+  pointer-events: none;
+}
+@media (min-width: 48em) { .cv-relatos-fade { inline-size: 5rem; } }
+.cv-relatos-fade--l { left: 0; background: linear-gradient(90deg, var(--cv-surface-alt), transparent); }
+.cv-relatos-fade--r { right: 0; background: linear-gradient(270deg, var(--cv-surface-alt), transparent); }
+
+.cv-relatos-note {
+  max-width: var(--container);
+  margin: 18px auto 0;
+  padding-inline: var(--gutter);
+  color: var(--cv-muted-3);
+  font-size: var(--fs-micro);
+}
+
+/* --------------------------------------------------------------------------
+   29. Aviso de urgencia e bonus liberado no checkout
+   -------------------------------------------------------------------------- */
+.cv-alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 0 0 20px;
+  border: 1px solid var(--cv-alert-bg);
+  border-left-width: 4px;
+  border-radius: var(--cv-radius-sm);
+  background: color-mix(in srgb, var(--cv-alert-bg) 14%, transparent);
+  padding: 14px 16px;
+  color: var(--cv-text-3);
+  font-size: var(--fs-small);
+}
+.cv-alert svg { flex: none; margin-top: 2px; color: var(--cv-alert-bg); }
+.cv-alert b { color: var(--cv-text); }
+
+.cv-bonus-unlock {
+  border: 1px solid var(--cv-cta);
+  border-radius: var(--cv-radius-sm);
+  background: var(--cv-cta-soft);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  animation: cv-bonus-in .45s ease-out both;
+}
+@keyframes cv-bonus-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.cv-bonus-unlock-t {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cv-cta);
+  font-size: var(--fs-tag);
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.cv-bonus-unlock-n { margin: 8px 0 4px; font-size: var(--fs-lead); font-weight: 700; }
+.cv-bonus-unlock-d { margin: 0; color: var(--cv-text-3); font-size: var(--fs-small); }
+.cv-bonus-unlock-p { margin: 8px 0 0; color: var(--cv-cta); font-size: var(--fs-tag); font-weight: 700; }
+
+/* --------------------------------------------------------------------------
+   30. Aviso de compra recente
+   Conteudo cadastrado pelo dono no painel. Sem cadastro, o elemento nao
+   entra no DOM: nada de nome inventado.
+   -------------------------------------------------------------------------- */
+.cv-proof {
+  position: fixed;
+  z-index: 70;
+  left: 12px;
+  bottom: 12px;
+  max-inline-size: min(21rem, calc(100vw - 24px));
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--cv-border-strong);
+  border-radius: 999px;
+  background: var(--cv-surface);
+  padding: 8px 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .55);
+  animation: cv-proof-in .4s ease-out both;
+}
+@keyframes cv-proof-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.cv-proof-dot {
+  flex: none;
+  inline-size: 1.875rem;
+  block-size: 1.875rem;
+  border-radius: 50%;
+  background: var(--cv-cta-soft);
+  color: var(--cv-cta);
+  display: grid;
+  place-items: center;
+}
+.cv-proof-txt { min-width: 0; font-size: var(--fs-micro); line-height: 1.35; }
+.cv-proof-txt b { display: block; color: var(--cv-text); font-size: var(--fs-tag); }
+.cv-proof-txt span { color: var(--cv-muted-2); }
+.cv-proof-x {
+  flex: none;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--cv-muted-3);
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+/* O botao do WhatsApp mora no canto direito; este fica no esquerdo para nao
+   cobrir nem ele nem o CTA no alcance do polegar. */
+@media (max-width: 29.99em) { .cv-proof { max-inline-size: calc(100vw - 24px); } }
+
+/* --------------------------------------------------------------------------
+   31. Selos do checkout
+   Tomam o lugar da faixa de tres paragrafos que respondia as objecoes por
+   escrito: no celular aquele bloco era um muro de texto logo abaixo do
+   botao, justo onde a pessoa so quer confirmar que e seguro. O selo entrega
+   a mesma resposta num relance. O texto continua existindo para leitor de
+   tela (no `alt`) e como rotulo curto abaixo de cada selo.
+   -------------------------------------------------------------------------- */
+.cv-seals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--cv-border);
+}
+.cv-seal { text-align: center; min-width: 0; }
+.cv-seal img {
+  display: block;
+  margin-inline: auto;
+  inline-size: clamp(3.75rem, 19vw, 5.5rem);
+  block-size: auto;
+}
+.cv-seal span {
+  display: block;
+  margin-top: 6px;
+  color: var(--cv-muted-2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+/* No card de preco os selos ficam menores e sem regua: ali eles reforcam o
+   valor, nao respondem objecao de pagamento. */
+.cv-valueside .cv-seals {
+  margin-top: 18px;
+  padding-top: 16px;
+  gap: 6px;
+}
+.cv-valueside .cv-seal img { inline-size: clamp(3rem, 15vw, 4.25rem); }
+
+/* --------------------------------------------------------------------------
+   32. Ajustes finais da reorganizacao
+   -------------------------------------------------------------------------- */
+.cv-mb14 { margin-bottom: 14px; }
+
+/* Secao do video em coluna unica e centralizada: o pedido era foco total no
+   video. Os tres passos 01/02/03 que dividiam a atencao aqui sairam. */
+.cv-video-solo {
+  max-width: 46rem;
+  margin-inline: auto;
+  text-align: center;
+}
+.cv-video-solo .cv-h2 { margin-bottom: 22px; }
+/* O quadro inteiro e clicavel, nao so o botao de play. */
+.cv-video-frame[data-cv-video] { cursor: pointer; }
+
+/* O `em` do .cv-claim seguia a cor do corpo. Aqui ele destaca a promessa. */
+.cv-claim em { color: var(--cv-accent); font-style: normal; }
+
+/* Botao "Buscar apostas seguras": e o controle da demonstracao, nao um CTA
+   de compra. Fica no amarelo da identidade para nao competir com o verde de
+   "clique aqui para comprar". */
+[data-cv-as-replay] {
+  background: transparent;
+  border: 1.5px solid var(--cv-accent);
+  color: var(--cv-accent);
+  box-shadow: none;
+  margin-bottom: 14px;
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-cv-as-replay]:hover { background: var(--cv-accent-ghost); color: var(--cv-accent-hover); }
+}
+
+/* --------------------------------------------------------------------------
+   33. Card Aposta Segura no celular — altura sob controle
+
+   Com o card entre o texto e o botao, cada pixel de altura dele empurra o
+   CTA para baixo da dobra. Duas medidas cortam ~140px sem tirar informacao:
+
+   1. O cabecalho vira coluna. Lado a lado, "Werder Bremen vs RB Leipzig" nao
+      cabe nos ~250px que sobram ao lado do selo e quebrava em duas linhas,
+      e a data quebrava em outras duas. Empilhado, o selo e a porcentagem
+      dividem uma linha e os times recebem a largura inteira: quatro linhas
+      de uma linha cada, em vez de cinco linhas quebradas.
+
+   2. A porcentagem ao lado do valor da aposta sai de cena. Ela era o que
+      fazia cada linha da tabela ter duas alturas ("R$ 25,08" / "(25.1%)").
+      O dado nao se perde: e a mesma divisao que os valores em reais ja
+      mostram, e no container largo ela volta.
+   -------------------------------------------------------------------------- */
+@container (max-width: 25.999rem) {
+  .cv-as-head { flex-direction: column; gap: 10px; }
+  .cv-as-side {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    order: -1;
+  }
+  .cv-as-match { gap: 6px; }
+  .cv-as-pctinline { display: none; }
+  .cv-as-kpis { margin-top: 12px; }
+  .cv-as-kpi { padding: 9px 10px; }
+  .cv-as-kpi-v { margin-top: 4px; }
+  .cv-as-table { margin-top: 11px; }
+  .cv-as-row { padding: 9px 2px; }
+  .cv-as-row--total { padding-bottom: 11px; }
+}
+
+/* Um pouco mais estreito ainda (iPhone SE): a coluna desfocada encolhe ao
+   minimo porque e a unica sem informacao legivel. */
+@container (max-width: 20.5rem) {
+  .cv-as-row { grid-template-columns: 1fr .42fr .58fr .92fr .92fr; }
+  .cv-as-team { font-size: .8125rem; }
+}
+
+/* O card na coluna direita da entrega tem ~470px: abaixo dos 30rem do layout
+   largo, mas confortavel para a tabela inteira. Baixar o corte para 26rem
+   deixa ele igual ao do hero em vez de usar o layout de celular no desktop. */
+@container (min-width: 26rem) {
+  .cv-as-team { font-size: 1rem; }
+  .cv-as-pct { font-size: 1.625rem; }
+  .cv-as-kpis { gap: 14px; }
+  .cv-as-kpi { padding: 13px 15px; }
+  .cv-as-kpi-l { font-size: .6875rem; letter-spacing: .09em; }
+  .cv-as-kpi-v { font-size: 1.1875rem; margin-top: 7px; }
+  /* As proporcoes do arquivo original (1.1 / 1.5 / .8 / 1.3 / 1.1) foram
+     desenhadas para um card de 700px; ali a coluna APOSTA ficava com 157px e
+     "R$ 25,08 (25.1%)" cabia. Na pagina o card mede ~510px, a mesma
+     proporcao da 115px e o valor quebrava em duas linhas. Quem cede espaco e
+     a coluna da casa de aposta — ela esta desfocada, e a unica sem
+     informacao legivel. */
+  .cv-as-row { grid-template-columns: 1fr 1.1fr .62fr 1.55fr 1.05fr; gap: 8px; padding: 13px 4px; }
+  .cv-as-row > span { font-size: .875rem; }
+  .cv-as-row--head { padding: 0 4px 10px; }
+  .cv-as-row--head > span { font-size: .6875rem; letter-spacing: .09em; }
+  .cv-as-pctinline { font-size: .75rem; }
+}
+
+/* --------------------------------------------------------------------------
+   34. Barra de compra fixa no celular
+
+   O card entre o texto e o botao e o que o dono pediu, e e o que converte:
+   a pessoa ve a conta fechada antes de decidir. O efeito colateral e que o
+   CTA do hero cai para uns 1150px de altura — fora da primeira dobra de
+   qualquer celular.
+
+   A barra resolve sem mexer na ordem: some enquanto o CTA do hero esta
+   visivel (seria botao repetido) e aparece no instante em que ele sai da
+   tela, ficando ate o fim da pagina. Some tambem quando o formulario de
+   checkout esta na tela — ali o botao de verdade e "Gerar Pix".
+
+   Nao existe no desktop: lá o CTA do hero cabe na dobra.
+   -------------------------------------------------------------------------- */
+.cv-buybar {
+  position: fixed;
+  z-index: 60;
+  inset-inline: 0;
+  bottom: 0;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--cv-bg) 92%, transparent);
+  border-top: 1px solid var(--cv-border-strong);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, .55);
+  backdrop-filter: blur(10px);
+}
+@media (max-width: 63.99em) {
+  /* `flex` só quando o JS marca a barra como ativa — o [hidden] global do
+     topo do arquivo continua vencendo, então ela nasce invisível. */
+  .cv-buybar[data-cv-buybar-on] { display: flex; }
+}
+.cv-buybar-info { min-width: 0; line-height: 1.15; }
+.cv-buybar-l { display: block; color: var(--cv-muted-2); font-size: var(--fs-micro); font-weight: 600; }
+.cv-buybar-p { display: block; color: var(--cv-accent); font-size: 1.375rem; font-weight: 800; letter-spacing: -.5px; }
+.cv-buybar .cv-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  gap: 8px;
+  box-shadow: 0 6px 18px var(--cv-cta-glow);
+}
+
+/* O botao do WhatsApp e o aviso de compra sobem para nao ficar debaixo da
+   barra. Os dois sao `position: fixed` no rodape da tela. */
+@media (max-width: 63.99em) {
+  body.cv-buybar-space .cv-wa { bottom: 5.5rem; }
+  body.cv-buybar-space .cv-proof { bottom: 5.5rem; }
+}
+
+/* --------------------------------------------------------------------------
+   35. Respiro no desktop
+   O que o dono chamou de "textos imprensados": com o container de 1180px, os
+   blocos novos (entrega, filtros, depoimentos) ficavam com as colunas curtas
+   e o texto quebrando cedo. O container maior do bloco 1 resolve a largura;
+   aqui vao os espacos verticais que faltavam.
+   -------------------------------------------------------------------------- */
+@media (min-width: 64em) {
+  .cv-section--incluido { padding-block: 64px 72px; }
+  .cv-section--video { padding-block: 72px; }
+  .cv-bonus-head { margin-bottom: 20px; }
+  .cv-deliver-list { gap: 14px; }
+  /* A moldura do video tem largura maxima propria: esticada em 1380px ela
+     virava uma faixa de 780px de altura e empurrava tudo para baixo. */
+  .cv-video-solo { max-width: 52rem; }
+}
+
+/* Os `<br>` do headline e dos titulos existem para o celular, onde a linha e
+   curta. No desktop eles forcam quebras onde ha espaco sobrando — era isso
+   que picava o titulo da oferta em tres linhas curtas ao lado de uma nota
+   solta. A partir de 64em o texto volta a fluir e o `balance` distribui. */
+@media (min-width: 64em) {
+  .cv-br-m { display: none; }
+  /* Sem `max-width` aqui: o `.cv-oferta-head` é flex e a nota da direita já
+     tem limite de 380px, então o título recebe o resto. Com um teto em `ch`
+     ele quebrava em três linhas curtas ao lado de um vão vazio. */
+  .cv-oferta-head .cv-h2 { text-wrap: balance; }
+}
+
+/* --------------------------------------------------------------------------
+   36. Hero: a conta dos 18px que quebravam o headline
+
+   Medido, nao estimado: "A odd é só o começo." em uma linha unica pede
+   **602px**. Com o container de 1280px e duas colunas iguais, a coluna do
+   texto tinha **584px** — faltavam 18px, e o verso caia numa quarta linha,
+   que era a maior parte do "quebrado" que o dono viu. Nao era
+   `text-wrap: pretty` nem o `letter-spacing` (testei os dois isolados:
+   continuava em duas caixas de linha).
+
+   Duas correcoes, uma por faixa de largura:
+    - >= 82em: as colunas deixam de ser 50/50. 1.08fr / 0.92fr da 631px ao
+      texto (cabe com folga) e 549px ao card — acima dos 416px de que ele
+      precisa para manter a tabela no layout largo.
+    - 64em..82em: ali o container ainda e 1180px e a coluna fica em ~585px
+      por limite fisico, nao por proporcao. O headline desce para 3.25rem
+      nessa faixa so, onde ele pede 522px. Volta aos 3.75rem do design
+      original assim que a tela permite.
+   -------------------------------------------------------------------------- */
+@media (min-width: 64em) {
+  .cv-hero-grid {
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+  }
+}
+@media (min-width: 64em) and (max-width: 81.99em) {
+  .cv-h1 { font-size: 3.25rem; }
+}
+
+/* --------------------------------------------------------------------------
+   37. Cada secao ocupa a tela inteira
+
+   Pedido do dono: "cada secao deve cobrir 100vh". Implementado como
+   `min-height`, nunca `height`: secao curta cresce para preencher a tela,
+   secao com mais conteudo que a tela continua crescendo e rolando em vez de
+   cortar o conteudo — com `height` fixo o checkout e a grade de ferramentas
+   ficariam decapitados no celular.
+
+   `100svh` e nao `100vh`: no celular o `100vh` conta a barra de endereco
+   como se ela nao existisse, entao a secao fica sempre mais alta que a tela
+   e sobra sempre uma fatia da proxima aparecendo embaixo. O `100vh` fica
+   como reserva para navegador antigo, e o `svh` sobrescreve onde existe.
+
+   O conteudo centraliza na vertical: sem isso a secao cresce mas o texto
+   continua grudado no topo, e o efeito de tela cheia nao aparece.
+
+   `.cv-section--relatos` saiu desta lista em 2026-09-08: o dono pediu que os
+   depoimentos deixassem de ocupar a tela inteira e ficassem so com uma
+   margem pequena em relacao aos cards — ela fica com a altura do proprio
+   conteudo, no bloco 47.
+   -------------------------------------------------------------------------- */
+.cv-hero,
+.cv-section--video,
+.cv-section--incluido,
+.cv-section--oferta,
+.cv-section--faq {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* O hero tem tres camadas em `position: absolute` (foto, veu, conteudo). O
+   flex precisa morar na camada de conteudo, senao o `justify-content` tenta
+   centralizar a foto de fundo tambem. */
+.cv-hero-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+/* A navegacao fica no topo; o grid toma o resto e centraliza dentro dele. */
+.cv-hero-grid { flex: 1; align-content: center; }
+
+/* Espaco vertical minimo mesmo quando a secao passa dos 100svh: sem isto,
+   uma secao alta cola no topo da anterior. */
+@media (min-width: 64em) {
+  .cv-section--video,
+  .cv-section--incluido,
+  .cv-section--oferta,
+  .cv-section--faq { padding-block: 72px; }
+}
+@media (max-width: 63.99em) {
+  .cv-section--video { padding-block: 48px; }
+  .cv-section--incluido { padding-block: 48px; }
+  .cv-section--oferta { padding-block: 40px 56px; }
+}
+
+/* --------------------------------------------------------------------------
+   38. Folga para a barra de compra
+   A barra e `position: fixed` no rodape da tela: sem folga no corpo, ela
+   tapa o ultimo paragrafo do rodape e o "188" do CVV.
+   -------------------------------------------------------------------------- */
+@media (max-width: 63.99em) {
+  body.cv-buybar-space { padding-bottom: 4.75rem; }
+}
+
+/* --------------------------------------------------------------------------
+   39. Efeito colateral do flex nas secoes de tela cheia
+
+   Transformar as secoes em `display: flex` mudou como os filhos centralizados
+   se dimensionam. Em layout de bloco, um filho com `margin-inline: auto` e
+   `max-width` ocupa a largura disponivel e recua ate o limite. Como item de
+   flex, `margin` automatico no eixo transversal **cancela o stretch**, e o
+   item cai para a largura do proprio conteudo: o quadro do video foi de
+   832px para 526px, e os textos dos depoimentos encolheram junto.
+
+   `width: 100%` devolve a base de calculo: o item pede a largura inteira, o
+   `max-width` corta e o `margin: auto` centraliza — a mesma ordem do layout
+   de bloco. So nos filhos que realmente usam margem automatica; a faixa dos
+   depoimentos NAO entra aqui, ela precisa continuar com `width: max-content`
+   para o carrossel dar a volta.
+   -------------------------------------------------------------------------- */
+.cv-hero > .cv-hero-inner,
+.cv-video-solo,
+.cv-relatos-head,
+.cv-relatos-note { width: 100%; }
+
+/* --------------------------------------------------------------------------
+   40. Fundo proprio por secao
+
+   O dono: "os background estao todos pretos". Estava certo — de seis secoes,
+   so o hero e os relatos pintavam fundo, e o `--cv-surface-alt` dos relatos
+   (#0a0d0b) difere do `--cv-bg` (#070a08) em tres pontos por canal, ou seja,
+   e invisivel. As outras quatro eram transparentes sobre o corpo preto.
+
+   Ele pediu uma biblioteca. Nao usei, e o motivo e concreto: a CSP desta
+   pagina e `style-src 'self'` sem `unsafe-inline` e `script-src` com nonce,
+   entao uma lib de CDN exigiria afrouxar a politica e somar dependencia de
+   rede num publico 90% celular — para produzir o que `radial-gradient` faz
+   nativamente, sem um byte de JS. Se ele insistir depois de ver, eu troco.
+
+   COMO, e por que assim:
+
+   1. `.cv-section` tem `max-width: var(--container)` e `margin-inline: auto`.
+      Pintar `background` direto na secao pinta so a faixa central e deixa
+      barras negras nas laterais em tela larga. Por isso cada fundo mora num
+      `::before` de sangria total (`left: 50%` + `translate` + `100vw`).
+      O `body` ja tem `overflow-x: hidden`, que e o que segura a barra de
+      rolagem horizontal que `100vw` criaria.
+
+   2. `position: absolute` e obrigatorio, e nao so pela sangria: as seis
+      secoes sao `display: flex` desde o bloco 37, e um `::before` estatico
+      viraria **item de flex** e entraria no layout empurrando o conteudo.
+      Absoluto sai do fluxo e nao e item de flex.
+
+   3. Os fundos sao **luz colorida que desvanece nas pontas**, nao blocos
+      solidos. Bloco solido cria costura visivel na fronteira entre secoes;
+      gradiente que morre em `transparent` deixa o `--cv-bg` do corpo como
+      chao continuo e a cor le como iluminacao proposital.
+
+   4. Cada tom conversa com a secao: verde-dinheiro onde se decide e se
+      compra, ambar onde a ferramenta dourada aparece, ardosia fria na pausa
+      dos depoimentos, e o mais escuro no fim para fechar.
+   -------------------------------------------------------------------------- */
+.cv-section--video,
+.cv-section--incluido,
+.cv-section--oferta,
+.cv-section--faq {
+  position: relative;
+  isolation: isolate;
+}
+
+.cv-section--video::before,
+.cv-section--incluido::before,
+.cv-section--oferta::before,
+.cv-section--faq::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  translate: -50% 0;
+  /* Nao e `100vw`: essa unidade inclui a largura da barra de rolagem, e o
+     viewport de layout nao. Em 1440 com barra classica isso deixava o
+     documento 8px mais largo que a area util e cortava 7,5px do gradiente de
+     cada lado. `--cv-sbw` e medida uma vez pelo JS (via CSSOM, que a CSP
+     permite); o fallback `0px` cobre barra sobreposta e ausencia de JS. */
+  inline-size: calc(100vw - var(--cv-sbw, 0px));
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Video — "veja antes de decidir". Verde frio e cinematografico: a luz vem
+   de cima, como a de uma tela acesa no escuro. */
+.cv-section--video::before {
+  background:
+    radial-gradient(115% 75% at 50% 0%, rgba(34, 197, 94, .13), transparent 62%),
+    linear-gradient(180deg, rgba(8, 20, 14, .95) 0%, rgba(8, 18, 13, .55) 55%, transparent 100%);
+}
+
+/* Ferramenta principal — ambar, porque o card e a marca da ferramenta sao
+   dourados. A luz vem de cima e um resto fica embaixo, onde a imagem esta. */
+.cv-section--incluido::before {
+  background:
+    radial-gradient(100% 62% at 50% 4%, rgba(245, 197, 24, .11), transparent 60%),
+    radial-gradient(72% 46% at 62% 96%, rgba(226, 167, 44, .07), transparent 66%),
+    linear-gradient(180deg, rgba(18, 15, 8, .82) 0%, rgba(14, 12, 8, .42) 60%, transparent 100%);
+}
+
+/* Oferta e checkout — verde de acao no topo (e onde esta o preco e o botao)
+   com um fundo ambar embaixo, que e a cor do dinheiro na paleta do projeto. */
+.cv-section--oferta::before {
+  background:
+    radial-gradient(95% 58% at 50% 0%, rgba(34, 197, 94, .15), transparent 58%),
+    radial-gradient(78% 48% at 50% 100%, rgba(245, 197, 24, .08), transparent 62%),
+    linear-gradient(180deg, rgba(7, 20, 12, .92) 0%, rgba(7, 16, 11, .5) 58%, transparent 100%);
+}
+
+/* FAQ — a secao que fecha. Ardosia azulada, e nao mais um verde fraco: a
+   primeira versao ficou a 2,4% de distancia do corpo e a 2,5% da oferta
+   (medido no pixel da borda), ou seja, indistinguivel. Sair da familia verde
+   resolve de vez e ainda cria simetria com a faixa de depoimentos, que
+   tambem e ardosia — a pagina fecha na mesma temperatura em que fez a pausa,
+   com a area de compra quente entre as duas. */
+.cv-section--faq::before {
+  background:
+    radial-gradient(96% 52% at 50% 0%, rgba(148, 163, 184, .13), transparent 66%),
+    linear-gradient(180deg, rgba(14, 19, 25, .96) 0%, rgba(12, 16, 21, .6) 62%, transparent 100%);
+}
+
+/* Depoimentos — a unica que ja tinha fundo solido. Continua solida (ela e uma
+   faixa fechada, com regua em cima e embaixo), mas sobe para uma ardosia fria
+   que finalmente se distingue do chao. Redefinir o token DENTRO da secao faz
+   os dois `.cv-relatos-fade` acompanharem sozinhos: eles usam
+   `var(--cv-surface-alt)` e sao descendentes daqui. Sem isto, as pontas do
+   carrossel desvaneceriam para a cor antiga e apareceria uma emenda. */
+.cv-section--relatos {
+  --cv-surface-alt: #0b1014;
+  border-block-color: rgba(148, 163, 184, .16);
+}
+
+/* --------------------------------------------------------------------------
+   41. Depoimentos menores
+
+   O dono: "os cards que fica mostrando as provas sociais estao enormes".
+   Estavam: a imagem ia a `clamp(16.125rem, 72vw, 26.25rem)` — 258px a 420px,
+   72% da largura da tela no celular, quase um card por tela.
+
+   Reduzi cerca de 28%, nao mais: os cards sao capturas de conversa com texto
+   dentro. Encolher demais torna o print ilegivel e a prova social vira
+   enfeite. A transcricao continua no `alt` para quem usa leitor de tela.
+
+   A duracao da animacao cai junto. A faixa e `width: max-content` e o
+   percurso e metade dela: card menor significa percurso menor, e com a mesma
+   duracao o carrossel andaria visivelmente mais devagar. 34s/50s mantem a
+   velocidade em pixels por segundo mais ou menos onde estava.
+   -------------------------------------------------------------------------- */
+.cv-relatos-track img { inline-size: clamp(13.5rem, 58vw, 18rem); }
+@media (min-width: 48em) {
+  .cv-relatos-track img { inline-size: clamp(14rem, 22vw, 17.5rem); }
+}
+.cv-relatos-track { animation-duration: 34s; }
+@media (min-width: 64em) {
+  .cv-relatos-track { animation-duration: 50s; }
+}
+
+/* --------------------------------------------------------------------------
+   42. Mockup do app na secao da ferramenta
+
+   Substitui a barra de filtros + o card repetido. O dono foi direto: a LP
+   nao pode oferecer busca, porque quem ve um campo de busca tenta usar.
+
+   A imagem tem fundo transparente e as etiquetas verdes escapam da moldura
+   do celular, entao ela precisa de um halo atras — sem isso o recorte flutua
+   sem chao. O halo e um `::before` com `inset` em porcentagem, para
+   acompanhar a imagem em qualquer largura.
+   -------------------------------------------------------------------------- */
+.cv-appshot {
+  position: relative;
+  isolation: isolate;
+  margin: 0;
+  text-align: center;
+}
+.cv-appshot::before {
+  content: '';
+  position: absolute;
+  inset: 4% 0 10%;
+  z-index: -1;
+  background: radial-gradient(58% 48% at 50% 46%, rgba(245, 197, 24, .16), transparent 72%);
+}
+.cv-appshot img {
+  display: block;
+  margin-inline: auto;
+  inline-size: 100%;
+  max-inline-size: 21rem;
+  block-size: auto;
+  filter: drop-shadow(0 26px 48px rgba(0, 0, 0, .62));
+}
+@media (min-width: 64em) {
+  .cv-appshot img { max-inline-size: 23.5rem; }
+}
+.cv-appshot-cap {
+  margin: 16px auto 0;
+  max-width: 30rem;
+  color: var(--cv-muted-3);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   43. Selos de seguranca do pagamento
+
+   O dono apontou que os selos se repetiam entre o pre-checkout e o checkout.
+   Eram os mesmos tres nos dois lugares. Agora: o trio de confianca (compra
+   segura / acesso imediato / garantia) fica so no card de preco, e onde se
+   paga entram os selos de pagamento.
+
+   A regua aqui e a ALTURA, nao a largura — e a diferenca em relacao ao
+   `.cv-seals`, cujas imagens sao quadradas de 240x240. Estas tem tres
+   proporcoes diferentes (620x220, 574x220, 294x220); igualar largura deixaria
+   o selo estreito gigante e o largo minusculo. Altura igual e o que faz um
+   conjunto de logos parecer alinhado.
+   -------------------------------------------------------------------------- */
+.cv-payseals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 20px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--cv-border);
+}
+.cv-payseals img {
+  display: block;
+  block-size: 1.875rem;
+  inline-size: auto;
+  max-inline-size: 100%;
+}
+@media (min-width: 64em) {
+  .cv-payseals img { block-size: 2.125rem; }
+}
+
+/* O comentario do bloco 31 prometia selos "menores e sem regua" no card de
+   preco, mas a regra nao zerava o `border-top` herdado do `.cv-seals`. A
+   regua continuava la. Agora cumpre o que o comentario diz — e o card de
+   preco ja tem borda propria, entao a linha interna era ruido. */
+.cv-valueside .cv-seals { border-top: 0; padding-top: 4px; }
+
+/* --------------------------------------------------------------------------
+   44. Faixa de oferta de lancamento no checkout
+
+   O dono: "onde preenche o pagamento coloque o contador OFERTA TERMINA EM na
+   tela toda falando que e oferta de lancamento".
+
+   "Na tela toda" pede `grid-column: 1 / -1`: a faixa e filha direta de
+   `.cv-checkout-box`, que e grid de duas colunas a partir de 48em. Dentro de
+   `.cv-checkout-form` ela ficaria presa em metade da largura. E o mesmo
+   padrao que o `.cv-checkout-brand` logo acima ja usa.
+
+   ATENCAO ao contexto: em 2026-09-07 o dono pediu "apenas um contador" e a
+   barra vermelha do checkout foi removida por isso. Agora ele pede um relogio
+   aqui. Voltamos a dois na pagina — mas os dois usam `data-cv-countdown` e
+   `data-cv-scarcity="countdown"`, e o `initCountdown` escreve em TODOS os
+   primeiros e esconde TODOS os segundos. Logo eles leem o mesmo prazo e somem
+   juntos: nao existe estado em que se contradigam. Se ele quiser voltar a um
+   so, o que sai e a tarja do card de preco.
+   -------------------------------------------------------------------------- */
+.cv-launchbar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+  padding: 12px 32px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cv-alert-bg) 55%, #000);
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--cv-alert-bg) 78%, #000) 0%,
+      var(--cv-alert-bg) 50%,
+      color-mix(in srgb, var(--cv-alert-bg) 78%, #000) 100%);
+  color: var(--cv-alert-ink);
+  text-align: center;
+}
+.cv-launchbar-tag {
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .28);
+  padding: 4px 11px;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cv-launchbar-txt {
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+.cv-launchbar-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.cv-launchbar-clock-l {
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .92;
+}
+/* Tabular: sem isso o relogio muda de largura a cada segundo e a faixa
+   inteira tremula, porque ela e centralizada. */
+.cv-launchbar-clock .cv-num {
+  color: var(--cv-accent);
+  font-size: 1.0625rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .5px;
+}
+@media (max-width: 47.99em) {
+  .cv-launchbar { padding: 11px 20px; gap: 6px 10px; }
+  .cv-launchbar-txt { flex: 1 0 100%; order: 3; font-size: var(--fs-micro); }
+}
+
+/* --------------------------------------------------------------------------
+   45. O aviso de lancamento no resumo do pedido
+
+   O dono: "mova para acima de onde diz que esta dando desconto e ajuste as
+   bordas". O unico lugar da pagina que diz "desconto" e a linha "Desconto de
+   lancamento", no resumo — o aviso foi para logo acima dela.
+
+   As bordas: no card de valor ele era um bloco largo, com barra de 4px na
+   esquerda e raio de 10px. Na coluna do resumo, que e estreita e ja e cheia
+   de linhas horizontais, aquela moldura competia com tudo. Aqui ele fica com
+   barra de 3px, cantos menores e menos respiro — le como nota anexada as
+   contas, que e o que ele e agora.
+   -------------------------------------------------------------------------- */
+.cv-checkout-side .cv-alert {
+  margin: 0 0 14px;
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 11px 13px;
+  gap: 9px;
+  font-size: var(--fs-micro);
+  line-height: 1.55;
+}
+.cv-checkout-side .cv-alert svg { inline-size: 15px; block-size: 15px; margin-top: 1px; }
+
+/* --------------------------------------------------------------------------
+   46. O card unico da oferta
+
+   O dono, olhando a secao inteira: "vamos unificar tudo em uma so, deixando a
+   barra de urgencia em cima, na esquerda o preenchimento dos dados como
+   prioridade e os outros gatilhos mentais na lateral direita. Melhore a ordem
+   de tudo. Aproveite os selos que ja temos."
+
+   Antes eram dois cards: o de valor (lista riscada + preco + botao "Garantir
+   minha vaga" + selos) e, abaixo, o checkout (que so aparecia depois do
+   clique). O botao do primeiro existia para revelar o segundo. Unificados,
+   ele perdeu a funcao: o formulario ESTA no card. O que o card de valor
+   dizia foi para o resumo do pedido, que e onde um checkout transparente
+   mostra a conta — cada item com o preco riscado, o valor original, o
+   desconto e o total como numero dominante.
+
+   Areas nomeadas, e nao `order`, porque a ordem MUDA entre celular e desktop
+   (o `trust` do desenho original saiu em 2026-09-08 — os selos agora vivem
+   DENTRO do resumo, ver bloco 48):
+
+     celular (90% do publico)      desktop (>= 64em)
+     +---------------+             +-------------+-----------+
+     | bar           |             | bar                     |
+     +---------------+             +-------------+-----------+
+     | summary       |             | form        | summary   |
+     +---------------+             +-------------+-----------+
+     | form          |             | value                   |
+     +---------------+             +-------------------------+
+     | value         |
+     +---------------+
+
+   No celular o resumo vem ANTES do formulario de proposito: quem vai digitar
+   CPF quer confirmar "o que" e "quanto" primeiro. No desktop isso acontece
+   sozinho, os dois estao na mesma linha de visao — e o formulario, que e a
+   acao, fica na coluna maior, a esquerda, onde a leitura comeca.
+
+   `value` (os gatilhos "Em 1 clique") ocupa a largura toda na ultima linha,
+   e nao so a coluna direita — motivo: o resumo cresceu com os selos do
+   bloco 48 e passou a ser bem mais alto que o formulario; se `value` ficasse
+   so a direita, `form` teria que esticar para acompanhar as DUAS linhas da
+   direita somadas (resumo + gatilhos), abrindo um vao vazio de centenas de
+   pixels sob o formulario. Em faixa unica embaixo, a linha "form/summary" so
+   precisa igualar a MAIOR das duas — resumo ou formulario —, um desnivel bem
+   menor. Por isso o `.cv-value-inner` deixou de ser `sticky` (nao ha mais
+   coluna curta para ele acompanhar rolando).
+
+   Coluna direita com fundo `--cv-surface` e regua a esquerda: a moldura
+   dourada e a sombra vieram do card de valor antigo — era a moldura da
+   "oferta" e continua sendo.
+   -------------------------------------------------------------------------- */
+.cv-checkout-box {
+  border: 1.5px solid var(--cv-accent);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .5);
+  overflow: clip;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "bar"
+    "summary"
+    "form"
+    "value";
+}
+.cv-launchbar                { grid-area: bar; }
+.cv-checkout-form            { grid-area: form; }
+.cv-checkout-summary         { grid-area: summary; }
+.cv-checkout-box > .cv-value { grid-area: value; margin-top: 0; border-top: 0; }
+
+.cv-checkout-summary,
+.cv-checkout-box > .cv-value {
+  padding: 1.375rem;
+  background: var(--cv-surface);
+}
+/* Reguas entre as faixas empilhadas. `value` e a ultima e nao precisa. */
+.cv-checkout-summary,
+.cv-checkout-form { border-bottom: 1px solid var(--cv-border); }
+
+/* Cabecalho do formulario: titulo a esquerda, cadeado "Pagamento seguro via
+   Pix" a direita — o chip veio do antigo cabecalho de marca do checkout, que
+   saiu (a barra de urgencia ja e o topo do card). */
+.cv-form-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.cv-form-head .cv-checkout-brand-secure { margin-top: 0.25rem; white-space: nowrap; }
+.cv-form-sub {
+  margin: 0.625rem 0 1.25rem;
+  color: var(--cv-muted);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+/* Forma de pagamento, logo acima do botao. Ha uma so (Pix), mas mostrar
+   "como" antes de "pagar" e o que faz o checkout ser transparente — e o
+   selo do Pix, que ficava perdido na fila de logos do rodape, vira a
+   ilustracao do metodo. Verde da CTA: e o mesmo verde do botao que vem em
+   seguida, entao a leitura e "Pix -> Gerar Pix". */
+.cv-paymethod {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--cv-cta);
+  border-radius: var(--cv-radius-sm);
+  background: var(--cv-cta-soft);
+}
+.cv-paymethod img { display: block; block-size: 1.5rem; inline-size: auto; flex: none; }
+.cv-paymethod > div { flex: 1; min-width: 0; }
+.cv-paymethod b { display: block; font-size: var(--fs-small); font-weight: 700; }
+.cv-paymethod span { display: block; color: var(--cv-muted-2); font-size: var(--fs-tag); line-height: 1.4; }
+.cv-paymethod svg { color: var(--cv-cta); flex: none; }
+
+/* Resumo do pedido. As tres linhas de item com preco riscado sao a antiga
+   lista "Veja o valor do que esta incluido"; "Valor original" fecha a soma
+   com uma regua tracejada, e o desconto e o total vem em seguida — a conta
+   inteira em um olhar, sem saltar de card. */
+.cv-checkout-summary .cv-order-rows { padding: 0.875rem 0; gap: 0.5rem; }
+.cv-order-row--sum {
+  margin-top: 0.25rem;
+  padding-top: 0.625rem;
+  border-top: 1px dashed var(--cv-border-strong);
+  color: var(--cv-text-2);
+  font-weight: 600;
+}
+.cv-checkout-summary .cv-price-note { margin: 0.5rem 0 0; font-size: var(--fs-tag); }
+.cv-checkout-summary .cv-spots { margin: 0.625rem 0 0; }
+/* O aviso de renovacao, compacto (mesma receita do bloco 45): barra de 3px,
+   cantos menores, menos respiro. Continua aqui e nao em letra miuda porque
+   R$ 47,90/mes depois do primeiro mes e informacao que o comprador tem de
+   ver antes de pagar. */
+.cv-checkout-summary .cv-alert {
+  margin: 1rem 0 0;
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 11px 13px;
+  gap: 9px;
+  font-size: var(--fs-micro);
+  line-height: 1.55;
+}
+.cv-checkout-summary .cv-alert svg { inline-size: 15px; block-size: 15px; margin-top: 1px; }
+.cv-checkout-summary [data-cv-link-cta] { margin-top: 1rem; }
+
+/* Modo "link" (checkout hospedado fora): o lp.js esconde o formulario e
+   liga esta classe. Sem o formulario, o card vira uma coluna so, centrada. */
+.cv-checkout-box--link {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "bar"
+    "summary"
+    "value";
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+@media (min-width: 64em) {
+  .cv-checkout-box {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    grid-template-areas:
+      "bar     bar"
+      "form    summary"
+      "value   value";
+  }
+  /* Fundo proprio no formulario: a linha "form/summary" fica com a altura
+     da MAIOR das duas colunas (hoje o resumo, que cresceu com os selos do
+     bloco 48), entao o formulario sobra mais baixo que a celula. Sem fundo
+     aqui essa sobra mostraria o gradiente da secao por baixo — um "buraco"
+     escuro dentro do card. Com o mesmo `--cv-surface` do resumo, a sobra lê
+     como respiro do card, nao como coisa faltando. */
+  .cv-checkout-form {
+    padding: 2rem 2.25rem 2.25rem;
+    border-bottom: 0;
+    background: var(--cv-surface);
+  }
+  .cv-checkout-summary {
+    padding: 1.75rem 2rem;
+    border-bottom: 0;
+    border-left: 1px solid var(--cv-border);
+  }
+  /* `value` ocupa as duas colunas nesta linha (grid-column implicito, pois
+     o nome da area repete nas duas): sem coluna direita mais estreita para
+     preencher, nao precisa mais de `sticky`. */
+  .cv-checkout-box > .cv-value {
+    padding: 1.75rem 2rem;
+    border-top: 1px solid var(--cv-border);
+  }
+
+  .cv-checkout-box--link {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "bar"
+      "summary"
+      "value";
+  }
+  /* No modo link o resumo volta a ocupar a linha toda: a regua que separa
+     as duas colunas do desktop normal ficaria sozinha, sem coluna alguma
+     do outro lado. */
+  .cv-checkout-box--link .cv-checkout-summary { border-left: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   47. Depoimentos sem altura de tela
+
+   O dono, olhando a secao: "preciso que essa secao nao fique vh mas apenas
+   com uma pequena margem em relacao aos cards de depoimentos".
+
+   Ela estava na lista do bloco 37 (`min-height: 100svh` + `justify-content:
+   center`), que existe para as secoes de tela cheia do meio da pagina. Como
+   o carrossel de depoimentos e uma tira baixa (titulo + uma linha de cards +
+   nota), o `min-height` forcava um vazio grande acima e abaixo dela so para
+   completar a tela — e o `justify-content: center` empurrava esse vazio para
+   as duas pontas por igual, entao a secao "flutuava" no meio da rolagem.
+
+   Tirada da lista do 37 (e das duas margens extras que ele dava, 80px/48px,
+   que existiam so para essa secao nao colar na vizinha quando o conteudo
+   passava dos 100svh — sem `min-height` isso nao acontece mais), ela volta a
+   ter a altura do proprio conteudo. A margem que sobra e so o
+   `padding-block: 40px` do bloco 28, ja existente — 40px em cima e embaixo
+   do titulo/carrossel/nota, sem vazio extra.
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   48. Os selos abaixo do "Total hoje", nao mais numa faixa propria
+
+   O dono, sobre os 3 selos dourados (compra segura, acesso imediato, 7 dias
+   de garantia): "adicione abaixo do preco do produto essas imagens dos
+   selos". Perguntado qual preco — o do topo (hero) ou o do checkout — ele
+   escolheu o checkout: abaixo do "Total hoje R$ 27,90", no resumo do pedido.
+
+   Antes os selos tinham area propria no grid (`trust`), colada sob o
+   formulario no desktop. Agora sao markup comum dentro de
+   `.cv-checkout-summary`, entre o `.cv-price-note` ("a vista no Pix...") e o
+   `.cv-spots` ("Restam X vagas") — a leitura fica preco -> selo de confianca
+   -> urgencia, na ordem que um comprador decide.
+
+   Nenhum CSS novo para eles: a classe base `.cv-seals` (bloco 31) ja tem
+   `margin-top` + `padding-top` + `border-top`, que e exatamente a regua de
+   separacao que a nova posicao pede — so nao se via antes porque a area
+   `trust` zerava essas tres propriedades (o proprio `padding` do grid item
+   ja dava o respiro). O grid do card perdeu uma area (era `bar/summary/
+   form/trust/value`, virou `bar/summary/form/value` — ver bloco 46).
+   -------------------------------------------------------------------------- */
