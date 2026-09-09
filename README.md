@@ -6,8 +6,7 @@ Um único processo Node serve a página, o painel e a API. Nenhum segredo chega
 ao navegador: o HTML recebe apenas o ID público do GTM e a configuração visual.
 
 > **Documentação de contexto e decisões** (arquitetura, lições, "de onde paramos"):
-> wiki Obsidian em `Projetos/Código Vencedor/wiki/` do vault
-> `C:\Users\binho\Documents\Projetos de IA\Obsidian\` — comece por `index.md` e
+> wiki Obsidian interna, fora deste repositório — comece por `index.md` e
 > `ponto-de-retomada.md`. Este README é a documentação operacional.
 
 ## Estado atual
@@ -308,21 +307,37 @@ A troca de senha fica em **Minha conta** (não mais na barra lateral).
 
 ## Deploy (VPS + Portainer + Cloudflare Tunnel)
 
+A stack **não publica nenhuma porta no host**: `db`, `api` e `cloudflared`
+conversam por uma rede interna própria. Quem expõe o site para a internet é o
+túnel, que sai da VPS para o Cloudflare — a origem nunca fica aberta.
+
 1. Suba o repositório para o GitHub.
-2. No Portainer, crie uma stack apontando para o repositório
-   (`docker-compose.yml` na raiz).
-3. Defina as variáveis de ambiente na própria stack — veja `.env.example`.
+2. Em **Cloudflare Zero Trust → Networks → Tunnels**, crie um túnel, copie o
+   token e adicione um **Public Hostname** com o seu domínio apontando para
+   `http://api:3000` (nome do serviço na rede da stack, não IP nem porta).
+3. Na VPS, crie o diretório dos backups: `mkdir -p /opt/codigo-vencedor/backups`.
+4. No Portainer, crie uma stack do tipo **Repository** apontando para o
+   repositório (`docker-compose.yml` na raiz) e marque *Enable relative path
+   volumes* apenas se for usar caminhos relativos — aqui o backup usa caminho
+   absoluto do host.
+5. Defina as variáveis de ambiente na própria stack — veja `.env.example`.
    Obrigatórias: `POSTGRES_PASSWORD`, `PUBLIC_URL`, `JWT_SECRET`,
-   `ENCRYPTION_KEY`. Para o primeiro boot, também `ADMIN_EMAIL` e
-   `ADMIN_PASSWORD`.
-4. Aponte o túnel Cloudflare para `api:3000` (ou para `127.0.0.1:3000` do host).
-5. Mantenha `TRUST_CLOUDFLARE=true` — sem isso o rate limit enxerga apenas o IP
+   `ENCRYPTION_KEY`, `CLOUDFLARE_TUNNEL_TOKEN`. Para o primeiro boot, também
+   `ADMIN_EMAIL` e `ADMIN_PASSWORD`.
+6. Mantenha `TRUST_CLOUDFLARE=true` — sem isso o rate limit enxerga apenas o IP
    do `cloudflared` e todo mundo cai no mesmo balde.
+7. No DNS do Cloudflare, o registro do hostname é criado pelo próprio túnel
+   (CNAME proxied). Não crie um registro A para o IP da VPS.
 
 As migrations rodam sozinhas no start (`prisma migrate deploy`). O serviço
-`backup` grava um `pg_dump` diário em `./backups`, mantendo 14 dias.
+`backup` grava um `pg_dump` diário em `BACKUP_DIR` (padrão
+`/opt/codigo-vencedor/backups`), mantendo 14 dias.
 
 Healthcheck: `GET /healthz`.
+
+> **Segredos nunca vivem neste repositório.** `.env` é ignorado pelo git; as
+> variáveis acima ficam só na stack do Portainer, e as credenciais de gateway,
+> Meta CAPI e SMTP ficam cifradas (AES-256-GCM) na tabela `Secret` do banco.
 
 ## Comandos
 
@@ -349,3 +364,8 @@ No Brasil, número inventado de vaga ou de comprador é o que o art. 37 do CDC
 trata como publicidade enganosa, e costuma pegar também na análise de anúncio
 do Meta. O padrão de fábrica é o modo manual, herdado do desenho original —
 a decisão é sua, mas as duas opções estão disponíveis.
+
+---
+
+© Código Vencedor. Todos os direitos reservados. Código publicado sem licença
+de uso: leitura permitida; uso, cópia ou redistribuição não são autorizados.

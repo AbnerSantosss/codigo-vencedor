@@ -25,7 +25,13 @@ const checkoutBody = z.object({
 });
 
 const draftBody = z.object({
-  nome: z.string().trim().min(3).max(120),
+  /**
+   * Opcional, e aceita vazio: a LP dispara o rascunho assim que o **e-mail**
+   * fica válido, que na prática é antes de o nome estar completo. Exigir nome
+   * aqui fazia o rascunho ser descartado em silêncio — e sem rascunho não há
+   * lead, não há abandono de checkout e não há recuperação.
+   */
+  nome: z.string().trim().max(120).optional(),
   email: z.string().trim().email().max(200),
   utm: z.record(z.string().max(300)).optional(),
   session_id: z.string().max(64).optional(),
@@ -35,28 +41,36 @@ const draftBody = z.object({
 
 export const checkoutRoutes: FastifyPluginAsync = async (app) => {
   /**
-   * Rascunho do lead — chamado pela página quando nome e e-mail ficam
-   * válidos, antes de a pessoa apertar "Gerar Pix".
+   * Rascunho do lead — chamado pela página assim que o e-mail fica válido,
+   * antes de a pessoa apertar "Gerar Pix".
    *
    * É o que torna "checkout abandonado" mensurável e recuperável: sem isto,
    * quem sai antes de enviar o formulário simplesmente não existe para nós.
    * Responde 204 sempre; um rascunho que falhou não é problema do visitante.
+   *
+   * **E-mail válido basta.** A regra antiga exigia nome com sobrenome junto,
+   * e quem preenchia só o e-mail e sumia era descartado sem registro nenhum —
+   * exatamente a pessoa que o dono quer recuperar ("se tiver pelo menos o
+   * email salva o evento com email ou qualquer outro dado que ele preencher").
    */
   app.post('/api/checkout/draft', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const parsed = draftBody.safeParse(req.body);
-    if (!parsed.success || parsed.data.nome.split(/\s+/).length < 2) return reply.code(204).send();
+    if (!parsed.success) return reply.code(204).send();
 
-    upsertDraftLead({
-      nome: parsed.data.nome,
-      email: parsed.data.email,
-      utm: sanitizeUtm(parsed.data.utm),
-      sessionId: parsed.data.session_id,
-      visitorId: readVisitorId(req) ?? undefined,
-      fbp: parsed.data.fbp,
-      fbc: parsed.data.fbc,
-      ip: clientIp(req, env.TRUST_CLOUDFLARE),
-      userAgent: req.headers['user-agent'],
-    }).catch((err) => req.log.warn({ err }, 'falha ao gravar rascunho de lead'));
+    upsertDraftLead(
+      {
+        nome: parsed.data.nome,
+        email: parsed.data.email,
+        utm: sanitizeUtm(parsed.data.utm),
+        sessionId: parsed.data.session_id,
+        visitorId: readVisitorId(req) ?? undefined,
+        fbp: parsed.data.fbp,
+        fbc: parsed.data.fbc,
+        ip: clientIp(req, env.TRUST_CLOUDFLARE),
+        userAgent: req.headers['user-agent'],
+      },
+      req.log,
+    ).catch((err) => req.log.warn({ err }, 'falha ao gravar rascunho de lead'));
 
     return reply.code(204).send();
   });
@@ -97,19 +111,25 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      const result = await createCheckout({
-        nome: body.nome.trim(),
-        email: body.email.toLowerCase(),
-        cpf,
-        fone,
-        utm: sanitizeUtm(body.utm),
-        sessionId: body.session_id,
-        visitorId: readVisitorId(req) ?? undefined,
-        fbp: body.fbp,
-        fbc: body.fbc,
-        ip: clientIp(req, env.TRUST_CLOUDFLARE),
-        userAgent: req.headers['user-agent'],
-      });
+      const result = await createCheckout(
+        {
+          nome: body.nome.trim(),
+          email: body.email.toLowerCase(),
+          cpf,
+          fone,
+          utm: sanitizeUtm(body.utm),
+          sessionId: body.session_id,
+          visitorId: readVisitorId(req) ?? undefined,
+          fbp: body.fbp,
+          fbc: body.fbc,
+          ip: clientIp(req, env.TRUST_CLOUDFLARE),
+          userAgent: req.headers['user-agent'],
+          /* Só para o `pix.created` achar o evento do navegador e levar o
+             bloco `site` no webhook. Ver `createCheckout`. */
+          eventId: body.event_id,
+        },
+        req.log,
+      );
 
       /**
        * Liga o evento que o navegador acabou de disparar a este pedido e a
@@ -187,8 +207,10 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
     // assim mascarados: esta rota é pública.
     if (order.status !== 'paid') return reply.send(base);
 
+    const cfg = await getSiteConfig();
     return reply.send({
       ...base,
+      accessUrl: /^https?:\/\//i.test(cfg.email.accessUrl) ? cfg.email.accessUrl : null,
       amountCents: order.amountCents,
       currency: order.currency,
       paidAt: order.paidAt?.toISOString() ?? null,

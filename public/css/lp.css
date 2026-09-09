@@ -294,7 +294,7 @@ button { font-family: inherit; cursor: pointer; }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 100%;
+  object-position: center;
   display: block;
 }
 
@@ -302,11 +302,8 @@ button { font-family: inherit; cursor: pointer; }
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: linear-gradient(180deg,
-    rgba(7, 10, 8, 0) 0%,
-    rgba(7, 10, 8, .05) 55%,
-    rgba(7, 10, 8, .7) 88%,
-    var(--cv-bg) 100%);
+  background: linear-gradient(90deg, rgba(4, 8, 14, .36), rgba(4, 8, 14, .12)),
+    linear-gradient(180deg, rgba(4, 8, 14, .24), transparent 55%, rgba(4, 8, 14, .6));
 }
 
 .cv-hero-inner { position: relative; z-index: 2; }
@@ -1365,6 +1362,7 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Logo na navegação: imagem no lugar do texto composto. */
 .cv-logo-img { height: 34px; width: auto; display: block; }
+@media (min-width: 48em) { .cv-nav .cv-logo-img { height: 64px; } }
 @media (max-width: 47.99em) { .cv-logo-img { height: 28px; } }
 
 /* --------------------------------------------------------------------------
@@ -1384,12 +1382,12 @@ button { font-family: inherit; cursor: pointer; }
   /* Véu forte: o texto ganha da foto, sempre. */
   .cv-hero-veil {
     background: linear-gradient(180deg,
-      rgba(7, 10, 8, .55) 0%,
-      rgba(7, 10, 8, .72) 38%,
-      rgba(7, 10, 8, .93) 72%,
-      var(--cv-bg) 100%);
+      rgba(4, 8, 14, .50) 0%,
+      rgba(4, 8, 14, .46) 38%,
+      rgba(4, 8, 14, .28) 72%,
+      rgba(4, 8, 14, .65) 100%);
   }
-  .cv-hero-bg { object-position: center 45%; }
+  .cv-hero-bg { object-position: center; }
 
   /* Headline primeiro, grande, com respiro curto até o preço e o botão. */
   .cv-hero-grid { padding-block: 22px 36px; gap: 32px; }
@@ -1745,6 +1743,93 @@ button { font-family: inherit; cursor: pointer; }
 
 /* O modal aberto congela a pagina atras dele. */
 body.cv-locked { overflow: hidden; }
+
+/* --------------------------------------------------------------------------
+   25b. Documentos em modal (Termos, Privacidade)
+   O rodape e o ultimo lugar antes do checkout. Mandar o lead para outra
+   pagina ali custa a sessao inteira: ele volta com o formulario zerado e o
+   cronometro remontado. O modal deixa ele ler e fechar em cima do que ja
+   estava preenchido.
+   O texto vem por fetch das proprias paginas /termos e /privacidade, entao
+   as regras do .cv-doc valem aqui dentro tambem — abaixo so o que muda.
+   -------------------------------------------------------------------------- */
+.cv-docmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(3, 5, 4, .93);
+  backdrop-filter: blur(6px);
+}
+.cv-docmodal-box {
+  position: relative;
+  inline-size: 100%;
+  max-inline-size: 46rem;
+  /* svh, nao vh: no Chrome do Android a barra de endereco retratil faz o vh
+     medir mais que a tela e o rodape do modal fica fora do alcance. */
+  max-block-size: min(85svh, 52rem);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--cv-surface);
+  border: 1px solid var(--cv-border-strong);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .7);
+}
+
+/* O cabecalho fica fixo enquanto o corpo rola: em documento longo, o X some
+   junto com o texto se rolar tudo. */
+.cv-docmodal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 14px 20px;
+  border-bottom: 1px solid var(--cv-border);
+  background: var(--cv-surface);
+}
+.cv-docmodal-title {
+  margin: 0;
+  font-size: var(--fs-lead);
+  font-weight: 800;
+  letter-spacing: -.4px;
+  color: var(--cv-text);
+}
+.cv-docmodal-close {
+  flex: none;
+  inline-size: var(--tap);
+  block-size: var(--tap);
+  border-radius: 50%;
+  border: 1px solid var(--cv-border-strong);
+  background: var(--cv-input);
+  color: var(--cv-text);
+  display: grid;
+  place-items: center;
+}
+
+/* tabindex="0" no corpo: sem isso o teclado nao rola um modal cujo unico
+   foco e o botao de fechar. */
+.cv-docmodal-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 20px 24px;
+}
+.cv-docmodal-loading { color: var(--cv-muted-3); font-size: var(--fs-body); }
+
+/* O .cv-doc vem inteiro do fetch, mas dentro do modal ele nao precisa da
+   largura, do respiro vertical nem do h1 — o titulo ja esta no cabecalho. */
+.cv-docmodal .cv-doc {
+  inline-size: 100%;
+  margin-inline: 0;
+  padding-block: 0;
+}
+.cv-docmodal .cv-doc h1,
+.cv-docmodal .cv-doc-back { display: none; }
+.cv-docmodal .cv-doc-date { margin-block: 16px 24px; }
+.cv-docmodal .cv-doc h2:first-of-type { margin-top: 0; }
 
 /* --------------------------------------------------------------------------
    27. Entrega principal e ferramentas bonus
@@ -2395,12 +2480,28 @@ body.cv-locked { overflow: hidden; }
   pointer-events: none;
 }
 
-/* Video — "veja antes de decidir". Verde frio e cinematografico: a luz vem
-   de cima, como a de uma tela acesa no escuro. */
+/* Estadio em toda a secao: imagens compostas para cada formato.
+   A camada escura protege o texto sem esconder torcida e refletores. */
 .cv-section--video::before {
-  background:
-    radial-gradient(115% 75% at 50% 0%, rgba(34, 197, 94, .13), transparent 62%),
-    linear-gradient(180deg, rgba(8, 20, 14, .95) 0%, rgba(8, 18, 13, .55) 55%, transparent 100%);
+  background-color: #0b1017;
+  background-image:
+    linear-gradient(180deg, rgba(5, 9, 15, .35), rgba(5, 9, 15, .18) 50%, rgba(5, 9, 15, .62)),
+    url('/assets/stadium-section-mobile.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.cv-section--video .cv-h2,
+.cv-section--video .cv-eyebrow,
+.cv-section--video .cv-btn-note {
+  text-shadow: 0 2px 10px #000;
+}
+@media (min-width: 48em) {
+  .cv-section--video::before {
+    background-image:
+      linear-gradient(180deg, rgba(5, 9, 15, .35), rgba(5, 9, 15, .18) 50%, rgba(5, 9, 15, .62)),
+      url('/assets/stadium-section-desktop.webp');
+  }
 }
 
 /* Ferramenta principal — ambar, porque o card e a marca da ferramenta sao
@@ -2538,12 +2639,13 @@ body.cv-locked { overflow: hidden; }
 }
 .cv-payseals img {
   display: block;
-  block-size: 1.875rem;
+  block-size: 2.5rem;
   inline-size: auto;
   max-inline-size: 100%;
 }
 @media (min-width: 64em) {
-  .cv-payseals img { block-size: 2.125rem; }
+  .cv-payseals { gap: 1rem 1.75rem; }
+  .cv-payseals img { block-size: 3rem; }
 }
 
 /* O comentario do bloco 31 prometia selos "menores e sem regua" no card de
@@ -2895,3 +2997,313 @@ body.cv-locked { overflow: hidden; }
    ja dava o respiro). O grid do card perdeu uma area (era `bar/summary/
    form/trust/value`, virou `bar/summary/form/value` — ver bloco 46).
    -------------------------------------------------------------------------- */
+
+/* Hero: comemoracao ao fundo, sem deslocar a posicao original do conteudo. */
+.cv-hero { background: #101b2b; }
+.cv-hero-bg { object-position: center top; }
+.cv-hero-veil {
+  background: linear-gradient(90deg, rgba(4,8,14,.78), rgba(4,8,14,.12) 65%),
+    linear-gradient(180deg, rgba(4,8,14,.12), rgba(4,8,14,.1) 30%, rgba(4,8,14,.65));
+}
+
+.cv-nav { text-shadow: 0 2px 8px #000; }
+@media (max-width: 47.99em) {
+  .cv-hero-bg { height: auto; width: 80%; object-fit: initial; top: 0; left: auto; right: 0; mask-image: linear-gradient(90deg, transparent, #000 15%); }
+  .cv-hero-veil { background: linear-gradient(180deg, rgba(4,8,14,.28), rgba(4,8,14,.58) 8rem, #101b2be8 22rem, #101b2b 48rem); }
+  
+}
+
+@media (min-width: 48em) {
+  .cv-hero-bg {
+    width: 60%; height: auto; left: auto; right: 0; top: 0;
+    mask-image: linear-gradient(90deg, transparent, #000 20%), linear-gradient(#000 65%, transparent);
+    mask-composite: intersect;
+  }
+}
+
+/* Continuidade visual e leitura da oferta. */
+.cv-hero .cv-h1 { font-size: clamp(2.125rem, 3.6vw, 3.5rem); line-height: 1.08; text-wrap: balance; }
+.cv-value-inner { display: grid; grid-template-columns: minmax(0,1fr); gap: 1rem; }
+.cv-value-title, .cv-value-demo, .cv-value-note { grid-column: 1 / -1; margin: 0; }
+.cv-value-item { margin: 0; padding: 1rem; border: 1px solid var(--cv-border); border-radius: .75rem; background: rgba(255,255,255,.025); align-items: flex-start; min-width: 0; }
+.cv-value-demo { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .75rem; padding: 1rem; }
+.cv-value-demo-row { display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; padding: 0; border: 0; min-width: 0; }
+.cv-value-demo-row span { font-size: .75rem; }
+.cv-value-demo-row b { font-size: clamp(.9rem,2.5vw,1.2rem); }
+@media(min-width:48em) { .cv-value-inner { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1.25rem; } }
+.cv-section--video .cv-video-frame { border-color: rgba(245,197,24,.55); box-shadow: 0 0 0 5px rgba(245,197,24,.07), 0 24px 60px rgba(0,0,0,.6); }
+.cv-section--video .cv-video-play-circle { background: var(--cv-accent); box-shadow: 0 .75rem 2.5rem rgba(245,197,24,.20); }
+.cv-section--video .cv-video-play i { border-left-color: #10151c; }
+.cv-section--video .cv-video-tag { background: #151b24; border: 1px solid rgba(245,197,24,.45); color: #f5c518; }
+.cv-section--video .cv-video-tag i { background: #f5c518; }
+.cv-video-cta .cv-btn { box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.35); }
+.cv-section--incluido::before { background: radial-gradient(ellipse at 80% 20%,rgba(245,197,24,.10),transparent 60%),linear-gradient(180deg,#101821,#11140f); }
+.cv-section--relatos { background: radial-gradient(ellipse at top,rgba(245,197,24,.06),transparent 65%),#0b1014; }
+.cv-section--oferta::before { background: radial-gradient(ellipse at 50% 10%,rgba(245,197,24,.08),transparent 60%),linear-gradient(180deg,#11140f,#0b1315); }
+.cv-section--faq::before { background: radial-gradient(ellipse at 15% 70%,rgba(245,197,24,.06),transparent 60%),linear-gradient(180deg,#0b1315,#101821); }
+.cv-footer { background: linear-gradient(180deg,#101821,#080d11); }
+
+/* Mobile: leitura centralizada e chamada imediatamente depois do preco. */
+@media (max-width: 47.99em) {
+  .cv-hero-grid { grid-template-areas: 'texto' 'acao' 'prova'; row-gap: 1rem; }
+  .cv-hero-texto { text-align: center; }
+  .cv-hero .cv-h1 { margin-inline: auto; }
+  .cv-hero-sub { margin-inline: auto; max-width: 36ch; }
+  .cv-price-hero { margin-bottom: 0; }
+  .cv-hero-acao .cv-btn { min-height: 3rem; }
+  .cv-hero-acao .cv-btn-note { justify-content: center; text-align: center; }
+  .cv-hero-prova { margin-top: 1rem; }
+  .cv-hero-prova > .cv-eyebrow,
+  .cv-h2,
+  .cv-h2--small,
+  .cv-relatos-head,
+  .cv-bonus-head,
+  .cv-value-title { text-align: center; }
+}
+
+/* Escala de leitura mobile: corpo 16px, apoio 14px, titulos 22–30px. */
+@media (max-width: 47.99em) {
+  :root { --fs-small: .875rem; --fs-lead: 1rem; --fs-input: 1rem; }
+  .cv-hero .cv-h1 { font-size: clamp(1.75rem, 1.25rem + 2vw, 1.875rem); line-height: 1.15; }
+  .cv-h2, .cv-claim { font-size: clamp(1.5rem, 1.25rem + 1vw, 1.75rem); line-height: 1.25; text-wrap: balance; }
+  .cv-h2--small, .cv-h2--form { font-size: 1.375rem; line-height: 1.3; text-wrap: balance; }
+  .cv-hero-sub, .cv-h2-sub, .cv-deliver-list { font-size: 1rem; line-height: 1.5; }
+  .cv-form-sub, .cv-checkout-summary .cv-alert, .cv-price-note { font-size: .875rem; line-height: 1.5; }
+  .cv-input { font-size: 1rem; min-width: 0; }
+  .cv-checkout-box { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'bar' 'summary' 'form' 'value'; }
+  .cv-checkout-box--link { grid-template-areas: 'bar' 'summary' 'value'; }
+  .cv-checkout-form, .cv-checkout-summary { min-width: 0; padding: 1.25rem; }
+  .cv-form-head { flex-direction: column; align-items: center; text-align: center; }
+  .cv-form-head > div { width: 100%; }
+  .cv-form-sub { text-align: center; }
+  .cv-form-head .cv-checkout-brand-secure { white-space: normal; justify-content: center; }
+  .cv-field-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Checkout mobile consolidado — plano 2026-09-09. */
+.cv-mobile-copy { display: none !important; }
+.cv-submit-price { display: none; }
+@media (max-width: 47.99em) {
+  .cv-mobile-copy:not([hidden]) { display: block !important; }
+  .cv-desktop-copy, .cv-submit-price-inline { display: none !important; }
+  .cv-checkout-box:not(.cv-checkout-box--link) { grid-template-areas: 'bar' 'summary' 'form' 'details'; }
+  .cv-checkout-box:not(.cv-checkout-box--link) > .cv-value,
+  .cv-checkout-box:not(.cv-checkout-box--link) .cv-checkout-summary > .cv-order-total,
+  .cv-checkout-box:not(.cv-checkout-box--link) .cv-checkout-summary > .cv-price-note,
+  .cv-checkout-box:not(.cv-checkout-box--link) .cv-checkout-summary > .cv-label-sm,
+  .cv-checkout-form [data-cv-bonus],
+  .cv-checkout-details .cv-seals, .cv-checkout-details .cv-alert, .cv-checkout-details .cv-spots,
+  .cv-form-head .cv-label-sm, .cv-launchbar-txt { display: none !important; }
+  html:not(.cv-real-deadline) .cv-checkout-box .cv-launchbar-clock { display: none; }
+  .cv-launchbar { padding: .75rem 1rem; gap: .375rem; }
+  .cv-launchbar-tag { font-size: .875rem; }
+  .cv-checkout-summary, .cv-checkout-form { padding: 1rem; }
+  .cv-checkout-summary .cv-order-item { margin: 0; gap: .75rem; }
+  .cv-checkout-summary .cv-order-img { width: 3.5rem; height: 4rem; }
+  .cv-order-t { font-size: 1rem; line-height: 1.4; }
+  .cv-order-d { font-size: .875rem; line-height: 1.4; }
+  .cv-form-head { justify-content: center; }
+  .cv-form-head .cv-h2--form { font-size: 1.375rem; line-height: 1.25; }
+  .cv-form-sub { margin: .5rem 0 1rem; font-size: .875rem; }
+  .cv-form { gap: 1rem; }
+  .cv-field { font-size: 1rem; }
+  .cv-input { min-height: 3rem; font-size: 1rem; }
+  .cv-paymethod { padding: .75rem; gap: .5rem; border-color: var(--cv-border); background: transparent; }
+  .cv-paymethod img { max-width: 3rem; height: auto; }
+  .cv-paymethod b, .cv-paymethod span { font-size: .875rem; }
+  .cv-paymethod > svg { display: none; }
+  .cv-renewal { font-size: .875rem; line-height: 1.4; color: var(--cv-muted); margin: 0; text-align: left; }
+  .cv-submit-price { display: grid; justify-items: center; gap: .25rem; text-align: center; }
+  .cv-submit-price > span, .cv-submit-price > small { font-size: .875rem; color: var(--cv-muted); }
+  .cv-submit-price > strong { font-size: 2rem; line-height: 1.1; color: var(--cv-accent); }
+  .cv-btn--submit { min-height: 3.25rem; padding: .75rem; font-size: 1rem; line-height: 1.35; white-space: normal; text-transform: none; }
+  .cv-secure { font-size: .875rem; line-height: 1.4; margin: 0; }
+  .cv-mobile-copy.cv-trust-row { display: flex !important; gap: .75rem; justify-content: space-between; text-align: center; font-size: .875rem; line-height: 1.4; padding-top: 1rem; border-top: 1px solid var(--cv-border); }
+  .cv-checkout-details { grid-area: details; padding: 1rem; background: var(--cv-surface); }
+  .cv-checkout-details > summary { cursor: pointer; font-size: .875rem; min-height: 3rem; align-content: center; }
+  .cv-checkout-details .cv-order-rows { font-size: .875rem; }
+  .cv-pix-wrap { display: flex; flex-direction: column; }
+  .cv-pix-side { order: -1; min-width: 0; width: 100%; }
+  .cv-pix-code { overflow-wrap: anywhere; }
+}
+
+.cv-field-error { color: var(--cv-danger); font-size: .875rem; line-height: 1.4; }
+@media (max-width: 47.99em) { .cv-details-link { font-size: .875rem; padding-top: .75rem; min-height: 3rem; } .cv-checkout-details .cv-value { padding-top: 1rem; } }
+
+/* Beneficios do hero: tres colunas exclusivas do celular. */
+.cv-hero-benefits { display: none; }
+@media (max-width: 47.99em) {
+  .cv-hero-texto > .cv-hero-sub { display: none; }
+  .cv-hero-benefits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: 1.25rem 0 1.5rem; }
+  .cv-hero-benefits > .cv-value-title { grid-column: 1 / -1; font-size: .75rem; line-height: 1.5; margin-bottom: .25rem; }
+  .cv-hero-benefits .cv-value-item { display: flex; flex-direction: column; align-items: center; gap: .625rem; padding: .75rem .375rem; text-align: center; background: rgba(10,16,24,.7); border-color: rgba(245,197,24,.18); }
+  .cv-hero-benefits .cv-value-icon { width: 2rem; height: 2rem; }
+  .cv-hero-benefits .cv-value-item > div { min-width: 0; width: 100%; }
+  .cv-hero-benefits .cv-value-item b { font-size: .875rem; line-height: 1.3; min-height: 2.6em; display: block; }
+  .cv-hero-benefits .cv-value-item > div > span { display: block; margin-top: .375rem; font-size: .875rem; line-height: 1.4; overflow-wrap: break-word; }
+}
+
+/* Video e selos: ajuste exclusivo do celular. */
+@media (max-width: 47.99em) {
+  .cv-section--video { min-height: 0; height: auto; padding-block: 3rem; }
+  .cv-trust-row > span { flex: 1; min-width: 0; }
+  .cv-trust-row img { display: block; width: clamp(3rem, 15vw, 4rem); height: auto; margin: 0 auto .5rem; }
+}
+
+/* Etapa Pix: QR, copia e prazo centralizados, sem ofertas concorrentes. */
+.cv-pix-active [data-cv-buybar],
+.cv-pix-active .cv-proof,
+.cv-pix-active .cv-checkout-box > .cv-launchbar,
+.cv-pix-active .cv-checkout-box > .cv-checkout-summary,
+.cv-pix-active .cv-checkout-box > .cv-checkout-details,
+.cv-pix-active .cv-checkout-box > .cv-value { display: none !important; }
+body.cv-pix-active.cv-buybar-space { padding-bottom: 0; }
+.cv-pix-active .cv-checkout-box { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'form'; }
+[data-cv-step="pix"] { text-align: center; width: 100%; max-width: 34rem; margin-inline: auto; scroll-margin-top: 1rem; }
+[data-cv-step="pix"] .cv-pix-wrap { flex-direction: column; align-items: center; gap: 1rem; }
+[data-cv-step="pix"] .cv-pix-side { order: 0; width: 100%; min-width: 0; }
+[data-cv-step="pix"] .cv-pix-qr { margin-inline: auto; }
+[data-cv-step="pix"] .cv-pix-code { overflow-wrap: anywhere; text-align: center; }
+[data-cv-step="pix"] [data-cv-copy] { width: 100%; justify-content: center; }
+[data-cv-step="pix"] .cv-next-item { flex-direction: column; align-items: center; gap: .375rem; }
+[data-cv-step="pix"] .cv-next { text-align: center; }
+[data-cv-step="pix"] .cv-pix-actions { align-items: center; justify-content: center; }
+[data-cv-reset] { display: inline-flex; align-items: center; justify-content: center; min-height: 3rem; padding: .625rem 1rem; border: 1px solid var(--cv-border-strong); border-radius: .5rem; background: rgba(255,255,255,.035); color: var(--cv-muted); text-decoration: none; }
+[data-cv-reset]:hover { background: rgba(255,255,255,.07); }
+[data-cv-reset]:focus-visible { outline: 2px solid var(--cv-accent); outline-offset: 3px; }
+
+/* Pos-compra: estadio discreto, acolhimento e passos com icones. */
+.cv-thanks-page { background: #0b171d; }
+.cv-thanks-page .cv-thanks { min-height: 100svh; background: linear-gradient(180deg,rgba(6,19,24,.35),rgba(6,19,24,.88)),url('/assets/hero-stadium-desktop.webp') center / cover no-repeat; padding: 3rem 1.25rem; }
+.cv-thanks-page .cv-thanks-card { width: min(100%,42rem); background: rgba(10,24,29,.94); border-color: rgba(143,193,174,.24); box-shadow: 0 1.5rem 5rem rgba(0,0,0,.3); padding: 2rem; }
+.cv-thanks-page .cv-thanks-check { margin: 0 auto 1.25rem; color: #8ee0b4; background: rgba(68,187,128,.12); border: 1px solid rgba(142,224,180,.25); box-shadow: 0 0 0 .5rem rgba(68,187,128,.035); }
+.cv-thanks-page .cv-label-sm, .cv-thanks-page .cv-h2, .cv-thanks-intro, .cv-thanks-welcome { text-align: center; }
+.cv-thanks-page .cv-label-sm { color: #8ee0b4; }
+.cv-thanks-page .cv-h2 { font-size: clamp(1.5rem,3vw,2rem); line-height: 1.25; margin-bottom: .75rem; }
+.cv-thanks-intro { font-size: 1rem; line-height: 1.5; margin-bottom: .625rem; }
+.cv-thanks-welcome { color: #bccdcf; font-size: .9375rem; line-height: 1.5; margin: 0; }
+.cv-thanks-page .cv-thanks-steps { gap: .75rem; margin: 1.75rem 0; }
+.cv-thanks-page .cv-thanks-step { gap: .875rem; padding: 1rem; border: 1px solid rgba(143,193,174,.12); border-radius: .875rem; background: rgba(255,255,255,.025); }
+.cv-thanks-step-icon { flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border-radius: .75rem; color: #a8d9c0; background: rgba(142,224,180,.08); }
+.cv-thanks-page .cv-step-t { font-size: 1rem; margin-bottom: .375rem; }
+.cv-thanks-page .cv-step-d { font-size: .875rem; line-height: 1.5; overflow-wrap: anywhere; }
+.cv-thanks-page .cv-thanks-order { margin-top: 1.5rem; justify-content: space-between; background: rgba(255,255,255,.035); }
+.cv-thanks-page .cv-thanks-order dt { font-size: .75rem; }
+.cv-thanks-login { text-transform: none; }
+.cv-thanks-login-note { text-align: center; color: #bccdcf; font-size: .875rem; line-height: 1.4; margin: .75rem 0; }
+.cv-thanks-exit { display: flex; align-items: center; justify-content: center; min-height: 3rem; color: #c6d8d8; border: 1px solid rgba(143,193,174,.2); border-radius: .625rem; margin-top: 1rem; padding: .5rem 1rem; }
+.cv-thanks-exit:hover { background: rgba(255,255,255,.04); }
+.cv-thanks-status { text-align: center; line-height: 1.5; }
+@media (max-width: 47.99em) {
+  .cv-thanks-page .cv-thanks { padding: 2rem 1rem; background-image: linear-gradient(180deg,rgba(6,19,24,.4),rgba(6,19,24,.92)),url('/assets/stadium-section-mobile.webp'); }
+  .cv-thanks-page .cv-thanks-card { padding: 1.5rem 1rem; }
+  .cv-thanks-page .cv-thanks-step { padding: .875rem .75rem; gap: .75rem; }
+  .cv-thanks-page .cv-thanks-step-icon { flex-basis: 2.25rem; width: 2.25rem; height: 2.25rem; }
+}
+.cv-thanks-page .cv-thanks-card {
+  background-color: #0a181d;
+  background-image: linear-gradient(180deg,rgba(10,24,29,.25),rgba(10,24,29,.88) 10rem,#0a181d 20rem),url('/assets/hero-stadium-desktop.webp');
+  background-size: 100% 100%,auto 22rem;
+  background-repeat: no-repeat;
+  background-position: center,75% top;
+}
+
+/* FAQ: ambiente de estudo esportivo com recorte proprio para cada tela. */
+.cv-section--faq {
+  min-height: 0;
+  height: auto;
+  padding-block: clamp(3rem, 6vw, 5rem);
+}
+.cv-section--faq::before {
+  background-color: #0b1315;
+  background-image: linear-gradient(180deg,rgba(11,19,21,.3),rgba(11,19,21,.12)),url('/assets/faq-support-desktop.webp');
+  background-size: cover;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+@media (max-width: 47.99em) {
+  .cv-section--faq::before {
+    background-image: linear-gradient(180deg,rgba(11,19,21,.15),rgba(11,19,21,.25)),url('/assets/faq-support-mobile.webp');
+    background-position: center bottom;
+  }
+}
+
+/* Logo Pix integrada ao botao de compra. */
+.cv-btn--submit { gap: .625rem; }
+.cv-submit-pix-logo { width: 3rem; height: auto; flex: 0 0 3rem; filter: brightness(0); }
+
+/* Pagamento em foco: fundo estatico discreto, sem imagens sob o QR. */
+.cv-pix-active .cv-checkout-box {
+  background-color: #0b171c;
+  background-image:
+    radial-gradient(ellipse at 50% 22%, rgba(55,151,125,.13), transparent 48%),
+    radial-gradient(ellipse at 0% 0%, rgba(68,103,142,.13), transparent 45%),
+    linear-gradient(135deg, #0e2028, #0b171c 55%, #101d20);
+  border-color: rgba(143,193,174,.28);
+  box-shadow: 0 1.5rem 4rem rgba(0,0,0,.22);
+}
+.cv-pix-active .cv-checkout-form { background: transparent; }
+[data-cv-step="pix"] .cv-pix-code,
+[data-cv-step="pix"] .cv-next {
+  background: rgba(9,20,25,.82);
+  border-color: rgba(143,193,174,.18);
+}
+[data-cv-step="pix"] .cv-pix-qr {
+  box-shadow: 0 0 0 6px rgba(143,193,174,.06), 0 .75rem 2.5rem rgba(0,0,0,.2);
+}
+[data-cv-step="pix"] .cv-next-n { flex: none; width: 1.5rem; height: 1.5rem; }
+
+/* Pix gerado ocupa a pagina inteira; o conteudo longo continua rolavel. */
+body.cv-pix-active { margin: 0; padding: 0; background: #0b171c; }
+body.cv-pix-active > :not(#oferta) { display: none !important; }
+.cv-pix-active #oferta {
+  width: 100%; max-width: none; min-height: 100vh; min-height: 100svh;
+  margin: 0; padding: 0; display: block;
+}
+.cv-pix-active #oferta::before,
+.cv-pix-active #oferta > :not(#checkout),
+.cv-pix-active .cv-checkout-form > :not([data-cv-step="pix"]) { display: none !important; }
+.cv-pix-active #checkout {
+  width: 100%; max-width: none; min-height: 100vh; min-height: 100svh;
+  margin: 0; border: 0; border-radius: 0; box-shadow: none;
+}
+.cv-pix-active .cv-checkout-form {
+  width: 100%; min-width: 0; border: 0;
+  padding: max(1.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+.cv-pix-active [data-cv-step="pix"] { scroll-margin-top: 0; }
+
+/* Conteudo do curso: campo tatico sutil remete a leitura de cenarios. */
+.cv-section--incluido::before {
+  background-color: #0c171b;
+  background-image: linear-gradient(90deg,rgba(9,18,23,.9),rgba(9,18,23,.12)),url('/assets/sports-analysis-background.svg'),radial-gradient(ellipse at 85% 25%,rgba(42,102,79,.2),transparent 65%);
+  background-size: cover,1440px auto,cover;
+  background-position: center,right top,center;
+  background-repeat: no-repeat;
+}
+.cv-deliver-list li > span > b {
+  display: block;
+  color: #f5ce55;
+  font-weight: 800;
+  margin-bottom: .25rem;
+}
+@media (max-width: 47.99em) {
+  .cv-section--incluido::before {
+    background-image: linear-gradient(180deg,rgba(9,18,23,.22),rgba(9,18,23,.68)),url('/assets/sports-analysis-background.svg'),radial-gradient(ellipse at 80% 15%,rgba(42,102,79,.16),transparent 60%);
+    background-size: cover,900px auto,cover;
+    background-position: center,65% top,center;
+  }
+}
+
+/* Ilustracoes tematicas suaves nos cards das ferramentas. */
+.cv-tool { position: relative; isolation: isolate; overflow: hidden; background-color: #0c1516; }
+.cv-tool::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 1; background-image: linear-gradient(90deg,rgba(6,15,18,.86),rgba(6,15,18,.62) 55%,rgba(6,15,18,.3)),var(--tool-art); background-size: cover; background-position: center; background-repeat: no-repeat; }
+.cv-tool::after { content: ""; position: absolute; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(ellipse at 100% 100%,rgba(51,109,88,.14),transparent 70%); }
+.cv-tool--bankroll { --tool-art: url("/assets/tool-bankroll-subject.webp"); }
+.cv-tool--odds { --tool-art: url("/assets/tool-odds-subject.webp"); }
+.cv-tool--slots { --tool-art: url("/assets/tool-slots-subject.webp"); }
+.cv-tool--limits { --tool-art: url("/assets/tool-limits-subject.webp"); }
+.cv-tool--progression { --tool-art: url("/assets/tool-progression-subject.webp"); }
+.cv-tool--calculator { --tool-art: url("/assets/tool-calculator-subject.webp"); }
+
+.cv-tool-t, .cv-tool-d { text-shadow: 0 1px 4px rgba(0,0,0,.5); }

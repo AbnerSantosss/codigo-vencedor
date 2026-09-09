@@ -4,11 +4,7 @@ Fonte única da verdade para qualquer agente (Claude Code, Gemini CLI/Antigravit
 
 ## 1. A documentação do projeto está na wiki
 
-Contexto, decisões, lições e o estado do trabalho estão registrados na wiki local do workspace em `../wiki/` e no cofre Obsidian em:
-
-```
-C:\Users\binho\Documents\Projetos de IA\Obsidian\Projetos\Código Vencedor\wiki\
-```
+Contexto, decisões, lições e o estado do trabalho estão registrados na wiki local do workspace em `../wiki/` e no cofre Obsidian local, em `Projetos/Código Vencedor/wiki/` (fora deste repositório).
 
 Antes de qualquer tarefa, leia de lá:
 

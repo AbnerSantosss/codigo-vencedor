@@ -13,6 +13,12 @@ import { isProd } from '../env.js';
  * server-side: se o usuário criar uma tag de Pixel dentro do GTM, ela precisa
  * carregar. Sem isso a tag falharia silenciosamente e o problema seria
  * difícil de achar.
+ *
+ * Vários containers do GTM **não** exigem nada a mais aqui: todos carregam de
+ * `www.googletagmanager.com`, que já está liberado, e a diretiva é por host,
+ * não por URL. O GA4 server-side também não pede nada — a chamada ao
+ * Measurement Protocol sai do servidor, e CSP só governa o navegador. Esta
+ * lista não foi afrouxada na etapa dos múltiplos pixels.
  */
 export function lpCsp(nonce: string): string {
   return [

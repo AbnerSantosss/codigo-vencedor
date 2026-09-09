@@ -34,6 +34,11 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
    *
    * Público de propósito — só contém o que já é visível na página. Nenhum
    * token, nenhuma credencial: esses ficam em `Secret` e só o servidor lê.
+   *
+   * De rastreamento sai só `tracking.gtmIds` (containers ativos) e
+   * `tracking.gtmId` (o primeiro deles, para quem já lia o campo antigo). A
+   * projeção é montada em `getPublicConfig`, em `services/config.ts` — id de
+   * pixel e measurement id não passam por aqui: o envio é do servidor.
    */
   app.get('/api/config', async (_req, reply) => {
     const cfg = await getSiteConfig();

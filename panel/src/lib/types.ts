@@ -56,13 +56,77 @@ export interface CheckoutCfg {
   openInNewTab: boolean;
 }
 
+/* --------------------------------------------------------- Rastreamento -- *
+ *
+ * Cada plataforma é uma **lista**: o dono anuncia com mais de uma conta e
+ * precisava de N containers do GTM e N pixels da Meta, cada pixel com o token
+ * da conta dele. As chaves antigas (`gtmId`, `meta.pixelId`, …) continuam
+ * existindo e valendo como legado — o servidor deriva a lista a partir delas
+ * quando a lista está vazia, então a configuração antiga não vira lixo.
+ *
+ * As listas são opcionais no tipo de propósito: o painel e o servidor são
+ * publicados em passos separados, e uma tela que quebra porque a chave nova
+ * ainda não subiu é pior do que uma tela mostrando só o item legado.
+ * -------------------------------------------------------------------------- */
+
+export interface GtmContainer {
+  id: string;
+  label: string;
+  active: boolean;
+}
+
+export interface MetaPixel {
+  id: string;
+  label: string;
+  active: boolean;
+  testEventCode: string;
+  /** Por pixel: um pode ter `purchase` ligado e o outro não. */
+  events: string[];
+}
+
+export interface Ga4Stream {
+  measurementId: string;
+  label: string;
+  active: boolean;
+}
+
+export interface GoogleAdsConversion {
+  conversionId: string;
+  conversionLabel: string;
+  label: string;
+  active: boolean;
+}
+
 export interface Tracking {
+  /** Legado: um container só. */
   gtmId: string;
-  meta: { pixelId: string; testEventCode: string; events: string[] };
-  ga4: { measurementId: string };
-  googleAds: { conversionId: string; conversionLabel: string };
+  gtm?: { containers: GtmContainer[] };
+  meta: { pixels?: MetaPixel[]; pixelId: string; testEventCode: string; events: string[] };
+  ga4: { streams?: Ga4Stream[]; measurementId: string };
+  googleAds: { conversions?: GoogleAdsConversion[]; conversionId: string; conversionLabel: string };
   tiktok: { pixelCode: string };
   kwai: { pixelId: string };
+}
+
+/**
+ * O retrato de "o que está instalado", montado pelo servidor.
+ *
+ * `temToken`/`temApiSecret` são booleanos derivados das mesmas chaves que o
+ * envio usa — nunca o valor do segredo. É o que deixa a tela dizer "este pixel
+ * está sem token" (o estado em que nenhum evento sai) sem nunca ter o token.
+ */
+export interface TrackingInstalado {
+  gtm: { id: string; label: string; active: boolean; origem: string }[];
+  meta: {
+    id: string;
+    label: string;
+    active: boolean;
+    temToken: boolean;
+    testEventCode: string;
+    eventos: number;
+  }[];
+  ga4: { measurementId: string; label: string; active: boolean; temApiSecret: boolean }[];
+  googleAds: { conversionId: string; conversionLabel: string; label: string; active: boolean }[];
 }
 
 export type TemplateId =
@@ -148,8 +212,11 @@ export interface GatewayTestResponse {
 
 export interface TrackingResponse {
   tracking: Tracking;
+  /** Inclui as chaves por instância: `meta.capiToken:<pixelId>`, `ga4.apiSecret:<id>`. */
   secrets: SecretsStatus;
   availableEvents: { id: string; label: string; meta: string }[];
+  /** Opcional: com um servidor mais antigo a tela remonta o retrato sozinha. */
+  instalado?: TrackingInstalado;
 }
 
 export interface MetaTestResponse {
@@ -160,6 +227,36 @@ export interface MetaTestResponse {
 }
 
 /* ------------------------------------------------------------ Dashboard -- */
+
+/**
+ * Etapa do funil contada na tabela de eventos.
+ *
+ * `total` são disparos e `sessions` são pessoas distintas: uma pessoa que
+ * recarrega a página cinco vezes é uma sessão e cinco `page_view`. Os dois
+ * números aparecem no cartão porque o dono usa um para volume de tráfego e
+ * o outro para tamanho de audiência.
+ */
+export interface FunnelStepMetric {
+  total: number;
+  sessions: number;
+  deltaAbs: number;
+}
+
+/**
+ * Os cinco indicadores da faixa "Funil do site" do dashboard.
+ *
+ * Abandono e Pix não têm `sessions`: são contagens de registro (rascunho de
+ * checkout, pedido Pix), não de sessão — contar "sessões que abandonaram"
+ * daria número diferente do que a tela de Recuperação lista, e duas telas
+ * discordando sobre o mesmo abandono já custou uma manhã aqui.
+ */
+export interface FunnelMetrics {
+  pageViews: FunnelStepMetric;
+  checkoutsOpened: FunnelStepMetric;
+  checkoutsAbandoned: { value: number; recovered: number; deltaAbs: number };
+  pixCreated: { value: number; deltaAbs: number };
+  pixAbandoned: { value: number; deltaAbs: number };
+}
 
 export interface MetricsSummary {
   days: number;
@@ -176,6 +273,15 @@ export interface MetricsSummary {
     recoveryEmails: number;
     recovered: { count: number; cents: number };
   };
+  /**
+   * Opcional de propósito.
+   *
+   * O painel e o servidor são publicados em passos separados; um dashboard
+   * que quebra porque a chave nova ainda não subiu é pior do que um cartão
+   * mostrando "—" por alguns minutos. O `funnel?` obriga a tela, no nível do
+   * compilador, a tratar o caso em que o servidor é mais antigo que ela.
+   */
+  funnel?: FunnelMetrics;
 }
 
 export interface DailySeries {
@@ -192,6 +298,7 @@ export interface SourcesResponse {
 export type OrderStatus = 'pending' | 'paid' | 'expired' | 'refunded' | 'failed';
 
 export interface RecentOrder {
+  source: string | null;
   publicId: string;
   reference: string;
   amountCents: number;
@@ -211,20 +318,69 @@ export interface EventsSummary {
 }
 
 export interface EventRow {
+  /** Id da linha — é por ele que se pede o payload em `/events/:id`. */
   id: string;
+  /** Id de deduplicação do evento (o mesmo que vai para a CAPI). */
+  eventId: string;
   event: string;
-  eventId: string | null;
-  sessionId: string | null;
+  createdAt: string;
   page: string | null;
   referrer: string | null;
+  /** Cortado em 8 caracteres pelo servidor: tela de depuração não identifica visitante. */
+  sessionId: string | null;
   utm: Record<string, string> | null;
   params: Record<string, unknown> | null;
-  createdAt: string;
+  /** Nome do evento de webhook correspondente, ou `null` quando não sai. */
+  outboundEvent: string | null;
+  /** Resultado do envio por plataforma — ex.: `{ meta: 'ok (1)' }`. */
+  forwarded: Record<string, string> | null;
 }
 
 export interface EventsList {
+  days: number;
   items: EventRow[];
   nextCursor: string | null;
+}
+
+/** Uma tentativa de entrega do evento em um webhook de saída. */
+export interface EventDeliveryRow {
+  id: string;
+  webhookName: string;
+  statusCode: number | null;
+  attempt: number;
+  deliveredAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * `GET /events/:id` — o evento inteiro, do jeito que foi gravado.
+ *
+ * `payload` é literalmente o mesmo objeto que sai no corpo do webhook. Não é
+ * uma reconstrução da tela: se o que o dono lê aqui divergisse do que o n8n
+ * recebe, a tela viraria uma segunda fonte da verdade — e a primeira coisa
+ * que se depura num webhook quebrado é justamente o corpo enviado.
+ */
+export interface EventDetail {
+  event: {
+    id: string;
+    eventId: string;
+    event: string;
+    createdAt: string;
+    sessionId: string | null;
+    visitorId: string | null;
+    leadId: string | null;
+    orderId: string | null;
+    page: string | null;
+    referrer: string | null;
+    ip: string | null;
+    userAgent: string | null;
+    utm: Record<string, string> | null;
+    params: Record<string, unknown> | null;
+    forwarded: Record<string, string> | null;
+  };
+  payload: Record<string, unknown>;
+  outboundEvent: string | null;
+  deliveries: EventDeliveryRow[];
 }
 
 /* ----------------------------------------------------------- Recuperação -- */

@@ -20,6 +20,12 @@ import { maskEmail } from '../../services/crypto.js';
 
 const rangeQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(7) });
 
+function sourceOf(utm: unknown): string | null {
+  if (!utm || typeof utm !== 'object') return null;
+  const source = (utm as Record<string, unknown>).utm_source;
+  return typeof source === 'string' && source.trim() ? source : null;
+}
+
 interface Window {
   from: Date;
   to: Date;
@@ -58,16 +64,147 @@ async function distinctSessions(event: string, from: Date, to: Date): Promise<nu
   return Number(rows[0]?.n ?? 0);
 }
 
+/**
+ * Disparos por evento do funil, na janela.
+ *
+ * Um `groupBy` só para os dois eventos em vez de um `count` por evento: são
+ * dois números do mesmo cartão e não há razão para duas idas ao banco.
+ */
+async function eventTotals(from: Date, to: Date): Promise<Map<string, number>> {
+  const rows = await prisma.funnelEvent.groupBy({
+    by: ['event'],
+    where: { event: { in: ['page_view', 'begin_checkout'] }, createdAt: { gte: from, lt: to } },
+    _count: { _all: true },
+  });
+  return new Map(rows.map((r) => [r.event, r._count._all]));
+}
+
+/**
+ * Abandono de checkout, **líquido**.
+ *
+ * Cuidado antes de "consertar" isto: o `checkout_abandoned` do navegador
+ * dispara no `visibilitychange` com a aba escondida, e isso inclui trocar de
+ * aba ou minimizar — o que no celular acontece o tempo todo com quem sai
+ * para copiar o CPF e volta para pagar. O evento é gravado assim mesmo, de
+ * propósito: o histórico registra o que aconteceu, não o que convém. Quem
+ * faz a subtração é a métrica, aqui:
+ *
+ *  - `value`     = sessões que abandonaram e **não** geraram Pix depois;
+ *  - `recovered` = sessões que abandonaram e geraram Pix depois.
+ *
+ * Os dois são **disjuntos**: `value + recovered` é o bruto de sessões com
+ * abandono. Não somar `recovered` a `value` na tela — seria contar duas
+ * vezes e inflar o cartão.
+ *
+ * Dois detalhes que também não são acidente: a busca pelo Pix posterior
+ * **não** tem limite de janela (a pessoa pode voltar dias depois, e o
+ * abandono continua sendo daquele dia); e sessão nula cai no `id` da própria
+ * linha, para não colapsar visitantes diferentes num único nulo — sem
+ * sessão não há como casar o Pix posterior, então essas linhas nunca entram
+ * em `recovered`.
+ */
+async function checkoutAbandonos(from: Date, to: Date): Promise<{ value: number; recovered: number }> {
+  const rows = await prisma.$queryRaw<{ abandonos: bigint; recuperados: bigint }[]>`
+    WITH sessoes AS (
+      SELECT COALESCE("sessionId", "id") AS chave,
+             MAX("sessionId")            AS sessao,
+             MIN("createdAt")            AS abandonado_em
+      FROM "FunnelEvent"
+      WHERE "event" = 'checkout_abandoned'
+        AND "createdAt" >= ${from} AND "createdAt" < ${to}
+      GROUP BY 1
+    ),
+    classificadas AS (
+      SELECT s.chave,
+             EXISTS (
+               SELECT 1
+               FROM "FunnelEvent" p
+               WHERE p."event" = 'add_payment_info'
+                 AND p."sessionId" = s.sessao
+                 AND p."createdAt" > s.abandonado_em
+             ) AS voltou
+      FROM sessoes s
+    )
+    SELECT COUNT(*) FILTER (WHERE NOT voltou) AS abandonos,
+           COUNT(*) FILTER (WHERE voltou)     AS recuperados
+    FROM classificadas
+  `;
+  return { value: Number(rows[0]?.abandonos ?? 0), recovered: Number(rows[0]?.recuperados ?? 0) };
+}
+
 export const metricsRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireAdmin());
+
+  /** Detalhamento autenticado dos indicadores, sem alterar pedidos ou contatos. */
+  app.get('/metrics/customers', async (req, reply) => {
+    const { days, kind, page, search } = rangeQuery.extend({
+      kind: z.enum(['paid', 'draft', 'expired']),
+      page: z.coerce.number().int().min(1).max(100000).default(1),
+      search: z.string().trim().max(120).default(''),
+    }).parse(req.query);
+    const w = windowFor(days);
+    const date = { gte: w.from, lt: w.to };
+    const contact = search ? { OR: [
+      { nome: { contains: search, mode: 'insensitive' as const } },
+      { email: { contains: search, mode: 'insensitive' as const } },
+    ] } : {};
+    const size = 20;
+    reply.header('Cache-Control', 'no-store');
+    if (kind === 'draft') {
+      const where = { status: 'draft' as const, createdAt: date, ...contact };
+      const [total, rows] = await prisma.$transaction([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * size, take: size,
+          select: { id: true, nome: true, email: true, fone: true, createdAt: true, recoveryEmailAt: true, utm: true } }),
+      ]);
+      return reply.send({ total, page, size, rows: rows.map((r) => ({
+        id: r.id, name: r.nome, email: r.email, phone: r.fone, date: r.createdAt,
+        reference: null, amountCents: null, recoveryEmailAt: r.recoveryEmailAt, source: sourceOf(r.utm),
+      })) });
+    }
+    const where = { status: kind, ...(kind === 'paid' ? { paidAt: date } : { createdAt: date }),
+      ...(search ? { OR: [{ lead: contact }, { reference: { contains: search, mode: 'insensitive' as const } }] } : {}) };
+    const [total, rows] = await prisma.$transaction([
+      prisma.order.count({ where }),
+      prisma.order.findMany({ where, orderBy: kind === 'paid' ? [{ paidAt: 'desc' }, { id: 'desc' }] : [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * size, take: size,
+        select: { id: true, reference: true, amountCents: true, createdAt: true, paidAt: true, recoveryEmailAt: true, utm: true,
+          lead: { select: { nome: true, email: true, fone: true } } } }),
+    ]);
+    return reply.send({ total, page, size, rows: rows.map((r) => ({
+      id: r.id, name: r.lead.nome, email: r.lead.email, phone: r.lead.fone,
+      date: kind === 'paid' ? r.paidAt : r.createdAt, reference: r.reference,
+      amountCents: r.amountCents, recoveryEmailAt: r.recoveryEmailAt, source: sourceOf(r.utm),
+    })) });
+  });
 
   /** Os cartões do topo do dashboard. */
   app.get('/metrics/summary', async (req, reply) => {
     const { days } = rangeQuery.parse(req.query);
     const w = windowFor(days);
 
-    const [now, prev, visits, prevVisits, pixCreated, refunded, drafts, expiredOrders, recoveryEmails, recovered] =
-      await Promise.all([
+    const [
+      now,
+      prev,
+      visits,
+      prevVisits,
+      pixCreated,
+      refunded,
+      drafts,
+      expiredOrders,
+      recoveryEmails,
+      recovered,
+      // Daqui para baixo é o bloco `funnel`. Tudo no mesmo Promise.all: são
+      // consultas independentes e enfileirá-las multiplicaria o tempo do
+      // cartão de topo do dashboard por nada.
+      totals,
+      prevTotals,
+      checkoutSessions,
+      abandonos,
+      prevAbandonos,
+      prevPixCreated,
+      prevExpiredOrders,
+    ] = await Promise.all([
         paidStats(w.from, w.to),
         paidStats(w.prevFrom, w.prevTo),
         distinctSessions('page_view', w.from, w.to),
@@ -94,10 +231,24 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
           _sum: { amountCents: true },
           _count: { _all: true },
         }),
+        eventTotals(w.from, w.to),
+        eventTotals(w.prevFrom, w.prevTo),
+        distinctSessions('begin_checkout', w.from, w.to),
+        checkoutAbandonos(w.from, w.to),
+        checkoutAbandonos(w.prevFrom, w.prevTo),
+        // Contrapartes da janela anterior de `pixCreated` e `expiredOrders`,
+        // só para os `deltaAbs` do bloco `funnel`.
+        prisma.order.count({ where: { createdAt: { gte: w.prevFrom, lt: w.prevTo } } }),
+        prisma.order.count({ where: { status: 'expired', createdAt: { gte: w.prevFrom, lt: w.prevTo } } }),
       ]);
 
     const refundedCents = refunded._sum.amountCents ?? 0;
     const netCents = now.revenueCents - refundedCents;
+
+    const pageViews = totals.get('page_view') ?? 0;
+    const prevPageViews = prevTotals.get('page_view') ?? 0;
+    const checkoutsOpened = totals.get('begin_checkout') ?? 0;
+    const prevCheckoutsOpened = prevTotals.get('begin_checkout') ?? 0;
 
     return reply.send({
       days,
@@ -130,6 +281,37 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         expiredOrders,
         recoveryEmails,
         recovered: { count: recovered._count._all, cents: recovered._sum.amountCents ?? 0 },
+      },
+      /**
+       * O funil como o dono pediu para ver: visualizações, checkouts
+       * abertos, checkout abandonado, Pix gerado e Pix abandonado.
+       *
+       * `pixCreated` e `pixAbandoned` saem das **mesmas** variáveis que
+       * `pixPaidRate.created` e `abandon.expiredOrders` logo acima. Não é
+       * economia de linha: são cartões vizinhos na mesma tela, e dois jeitos
+       * de contar a mesma coisa acabam divergindo — normalmente na frente do
+       * dono. Uma fonte só, nunca discordam.
+       */
+      funnel: {
+        // `sessions` é a mesma contagem de sessões distintas que alimenta
+        // `visits`, pelo mesmo motivo.
+        pageViews: { total: pageViews, sessions: visits, deltaAbs: pageViews - prevPageViews },
+        // "Abriu o checkout" aqui é `begin_checkout`, que dispara no primeiro
+        // `input` do formulário: é o cliente que começou a digitar, não quem
+        // só passou os olhos pela seção.
+        checkoutsOpened: {
+          total: checkoutsOpened,
+          sessions: checkoutSessions,
+          deltaAbs: checkoutsOpened - prevCheckoutsOpened,
+        },
+        // `value` e `recovered` são disjuntos — ver `checkoutAbandonos`.
+        checkoutsAbandoned: {
+          value: abandonos.value,
+          recovered: abandonos.recovered,
+          deltaAbs: abandonos.value - prevAbandonos.value,
+        },
+        pixCreated: { value: pixCreated, deltaAbs: pixCreated - prevPixCreated },
+        pixAbandoned: { value: expiredOrders, deltaAbs: expiredOrders - prevExpiredOrders },
       },
     });
   });
@@ -217,6 +399,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         createdAt: true,
         paidAt: true,
         provider: true,
+        utm: true,
         lead: { select: { nome: true, email: true } },
       },
     });
@@ -230,6 +413,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         createdAt: o.createdAt.toISOString(),
         paidAt: o.paidAt?.toISOString() ?? null,
         provider: o.provider,
+        source: sourceOf(o.utm),
         customer: o.lead.nome,
         // E-mail mascarado: o dashboard não é lugar de listar dado pessoal
         // por inteiro, mesmo atrás de login.

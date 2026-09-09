@@ -132,19 +132,290 @@ export const checkoutSchema = z.object({
   openInNewTab: z.boolean(),
 });
 
-export const trackingSchema = z.object({
-  gtmId: z.union([z.string().regex(/^GTM-[A-Z0-9]+$/), z.literal('')]),
-  meta: z.object({
-    pixelId: z.string().max(32),
-    testEventCode: z.string().max(32),
-    /** Quais eventos do funil o servidor envia para a API de Conversões. */
-    events: z.array(z.string()).max(20),
-  }),
-  ga4: z.object({ measurementId: z.string().max(32) }),
-  googleAds: z.object({ conversionId: z.string().max(32), conversionLabel: z.string().max(64) }),
-  tiktok: z.object({ pixelCode: z.string().max(64) }),
-  kwai: z.object({ pixelId: z.string().max(64) }),
+/* ------------------------------------------------------------------ *
+ * Rastreamento
+ *
+ * A forma é uma **lista por plataforma**: N containers do GTM, N pixels da
+ * Meta, N streams do GA4, N conversões do Google Ads. Um anunciante que roda
+ * com agência costuma ter mais de um pixel na mesma página, e antes só cabia
+ * um.
+ *
+ * Os campos antigos de item único continuam no schema de propósito. Removê-los
+ * transformaria em lixo toda configuração já gravada — e `SiteConfig.tracking`
+ * é `jsonb`, então não há DDL nem migration que avise. A leitura cai neles
+ * quando a lista está vazia (ver `normalizarTracking`).
+ *
+ * O que NÃO está aqui, e é decisão, não esquecimento: nada disso vira tag no
+ * HTML. No navegador só entra a tag do GTM; pixel de navegador o dono monta
+ * dentro do GTM. Meta e GA4 recebem do servidor.
+ * ------------------------------------------------------------------ */
+
+/** Teto por plataforma. Não é limite técnico: é o que cabe numa tela e o que
+ *  ainda faz sentido disparar em paralelo no caminho de uma venda. */
+const MAX_POR_PLATAFORMA = 5;
+
+/** Nome que o dono dá para não confundir dois pixels na tela. Vazio é válido. */
+const rotuloSchema = z.string().max(40).default('');
+
+/**
+ * Dois itens com o mesmo id duplicariam cada evento enviado — e conversão
+ * contada duas vezes estraga a otimização da campanha, que é pior do que
+ * perder uma.
+ */
+function idsUnicos<T>(ler: (item: T) => string, campo: string) {
+  return (lista: T[], ctx: z.RefinementCtx): void => {
+    const vistos = new Set<string>();
+    for (let i = 0; i < lista.length; i++) {
+      const item = lista[i];
+      if (item === undefined) continue;
+      const id = ler(item);
+      if (vistos.has(id)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, campo], message: `Id repetido: ${id}` });
+      }
+      vistos.add(id);
+    }
+  };
+}
+
+const gtmContainerSchema = z.object({
+  id: z.string().regex(/^GTM-[A-Z0-9]+$/, 'ID de container inválido (esperado GTM-XXXXXXX)'),
+  label: rotuloSchema,
+  active: z.boolean().default(true),
 });
+
+const metaPixelSchema = z.object({
+  /** O id do pixel é numérico. A faixa é folgada de propósito: a Meta já
+   *  emitiu ids de 15 e de 16 dígitos e não promete o tamanho. */
+  id: z.string().regex(/^\d{5,25}$/, 'Pixel ID inválido (apenas dígitos)'),
+  label: rotuloSchema,
+  active: z.boolean().default(true),
+  testEventCode: z.string().max(32).default(''),
+  /** Por pixel: um pode ter `purchase` ligado e o outro não. */
+  events: z.array(z.string().max(40)).max(20).default([]),
+});
+
+const ga4StreamSchema = z.object({
+  measurementId: z.string().regex(/^G-[A-Z0-9]+$/, 'Measurement ID inválido (esperado G-XXXXXXX)'),
+  label: rotuloSchema,
+  active: z.boolean().default(true),
+});
+
+const googleAdsConversionSchema = z.object({
+  conversionId: z.string().regex(/^AW-\d+$/, 'ID de conversão inválido (esperado AW-000000000)'),
+  conversionLabel: z.string().max(64).default(''),
+  label: rotuloSchema,
+  active: z.boolean().default(true),
+});
+
+/** Eventos que o servidor sabe traduzir para a Meta. Serve de padrão quando um
+ *  pixel é cadastrado sem escolha explícita. */
+export const EVENTOS_CAPI_PADRAO = [
+  'page_view',
+  'view_content',
+  'begin_checkout',
+  'generate_lead',
+  'add_payment_info',
+  'purchase',
+];
+
+export const trackingSchema = z.object({
+  /** Legado: um container só. Mantido para configuração antiga não virar lixo. */
+  gtmId: z
+    .union([z.string().regex(/^GTM-[A-Z0-9]+$/), z.literal('')])
+    .default(''),
+  gtm: z
+    .object({
+      containers: z
+        .array(gtmContainerSchema)
+        .max(MAX_POR_PLATAFORMA, `No máximo ${MAX_POR_PLATAFORMA} containers`)
+        .superRefine(idsUnicos<{ id: string }>((c) => c.id, 'id'))
+        .default([]),
+    })
+    .default({}),
+  meta: z
+    .object({
+      pixels: z
+        .array(metaPixelSchema)
+        .max(MAX_POR_PLATAFORMA, `No máximo ${MAX_POR_PLATAFORMA} pixels`)
+        .superRefine(idsUnicos<{ id: string }>((p) => p.id, 'id'))
+        .default([]),
+      /* Legado — um pixel só, com o token único `meta.capiToken`. */
+      pixelId: z.string().max(32).default(''),
+      testEventCode: z.string().max(32).default(''),
+      /** Quais eventos do funil o servidor envia para a API de Conversões. */
+      events: z.array(z.string().max(40)).max(20).default([]),
+    })
+    .default({}),
+  ga4: z
+    .object({
+      streams: z
+        .array(ga4StreamSchema)
+        .max(MAX_POR_PLATAFORMA, `No máximo ${MAX_POR_PLATAFORMA} streams`)
+        .superRefine(idsUnicos<{ measurementId: string }>((s) => s.measurementId, 'measurementId'))
+        .default([]),
+      /* Legado. */
+      measurementId: z.string().max(32).default(''),
+    })
+    .default({}),
+  /**
+   * Google Ads fica guardado e exibido, mas **não** tem envio direto daqui, e
+   * isso é desenho, não pendência: a conversão do Ads entra por importação a
+   * partir do GA4 (Ferramentas › Importar › Google Analytics). Enviar também
+   * pela Enhanced Conversions API duplicaria a mesma venda nas duas contas.
+   * Quem for mexer nisto depois: não "complete" o que falta aqui sem falar com
+   * o dono — o que falta é intencional.
+   */
+  googleAds: z
+    .object({
+      conversions: z
+        .array(googleAdsConversionSchema)
+        .max(MAX_POR_PLATAFORMA, `No máximo ${MAX_POR_PLATAFORMA} conversões`)
+        .superRefine(idsUnicos<{ conversionId: string }>((c) => c.conversionId, 'conversionId'))
+        .default([]),
+      /* Legado. */
+      conversionId: z.string().max(32).default(''),
+      conversionLabel: z.string().max(64).default(''),
+    })
+    .default({}),
+  tiktok: z.object({ pixelCode: z.string().max(64).default('') }).default({}),
+  kwai: z.object({ pixelId: z.string().max(64).default('') }).default({}),
+});
+
+export type TrackingConfig = z.infer<typeof trackingSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Migração de leitura (não de escrita)
+ * ------------------------------------------------------------------ */
+
+const comoObjeto = (v: unknown): Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+const comoTexto = (v: unknown, max: number): string => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const comoLista = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const comoBool = (v: unknown, padrao: boolean): boolean => (typeof v === 'boolean' ? v : padrao);
+
+/**
+ * Leitura tolerante do `tracking`.
+ *
+ * Uma instalação que já existe tem só `gtmId`/`meta.pixelId` preenchidos e
+ * nenhuma lista. Em vez de rodar migração de dados — que exigiria alguém
+ * executar um script no banco de produção para o painel voltar a funcionar —,
+ * a conversão acontece **na leitura**: lista vazia com o campo legado
+ * preenchido vira uma lista de um item. O primeiro PUT do painel grava a forma
+ * nova e o legado fica parado onde está, sem apagar nada.
+ *
+ * Também é a garantia de tipo do resto do código: `SiteConfig.tracking` é
+ * `jsonb` e ninguém valida o que veio do banco, então é aqui que
+ * `cfg.tracking.meta.pixels` deixa de poder ser `undefined` em tempo de
+ * execução enquanto o TypeScript jura que é um array.
+ */
+export function normalizarTracking(bruto: unknown): TrackingConfig {
+  const raiz = comoObjeto(bruto);
+  const gtmRaw = comoObjeto(raiz.gtm);
+  const metaRaw = comoObjeto(raiz.meta);
+  const ga4Raw = comoObjeto(raiz.ga4);
+  const adsRaw = comoObjeto(raiz.googleAds);
+
+  const gtmIdLegado = comoTexto(raiz.gtmId, 32);
+  const pixelIdLegado = comoTexto(metaRaw.pixelId, 32);
+  const testEventCodeLegado = comoTexto(metaRaw.testEventCode, 32);
+  const eventosLegado = comoLista(metaRaw.events)
+    .filter((e): e is string => typeof e === 'string')
+    .slice(0, 20);
+  const measurementIdLegado = comoTexto(ga4Raw.measurementId, 32);
+  const conversionIdLegado = comoTexto(adsRaw.conversionId, 32);
+  const conversionLabelLegado = comoTexto(adsRaw.conversionLabel, 64);
+
+  const containers = comoLista(gtmRaw.containers)
+    .map((item) => {
+      const o = comoObjeto(item);
+      return { id: comoTexto(o.id, 32), label: comoTexto(o.label, 40), active: comoBool(o.active, true) };
+    })
+    .filter((c) => c.id !== '')
+    .slice(0, MAX_POR_PLATAFORMA);
+
+  const pixels = comoLista(metaRaw.pixels)
+    .map((item) => {
+      const o = comoObjeto(item);
+      const eventos = comoLista(o.events)
+        .filter((e): e is string => typeof e === 'string')
+        .slice(0, 20);
+      return {
+        id: comoTexto(o.id, 32),
+        label: comoTexto(o.label, 40),
+        active: comoBool(o.active, true),
+        testEventCode: comoTexto(o.testEventCode, 32),
+        events: eventos,
+      };
+    })
+    .filter((p) => p.id !== '')
+    .slice(0, MAX_POR_PLATAFORMA);
+
+  const streams = comoLista(ga4Raw.streams)
+    .map((item) => {
+      const o = comoObjeto(item);
+      return {
+        measurementId: comoTexto(o.measurementId, 32),
+        label: comoTexto(o.label, 40),
+        active: comoBool(o.active, true),
+      };
+    })
+    .filter((s) => s.measurementId !== '')
+    .slice(0, MAX_POR_PLATAFORMA);
+
+  const conversions = comoLista(adsRaw.conversions)
+    .map((item) => {
+      const o = comoObjeto(item);
+      return {
+        conversionId: comoTexto(o.conversionId, 32),
+        conversionLabel: comoTexto(o.conversionLabel, 64),
+        label: comoTexto(o.label, 40),
+        active: comoBool(o.active, true),
+      };
+    })
+    .filter((c) => c.conversionId !== '')
+    .slice(0, MAX_POR_PLATAFORMA);
+
+  /* A derivação só acontece com a lista vazia. Lista preenchida é a verdade:
+     quem apagou o último pixel da lista não quer o legado de volta. */
+  if (containers.length === 0 && gtmIdLegado) {
+    containers.push({ id: gtmIdLegado, label: 'Principal', active: true });
+  }
+  if (pixels.length === 0 && pixelIdLegado) {
+    pixels.push({
+      id: pixelIdLegado,
+      label: 'Principal',
+      active: true,
+      testEventCode: testEventCodeLegado,
+      events: eventosLegado.length ? eventosLegado : [...EVENTOS_CAPI_PADRAO],
+    });
+  }
+  if (streams.length === 0 && measurementIdLegado) {
+    streams.push({ measurementId: measurementIdLegado, label: 'Principal', active: true });
+  }
+  if (conversions.length === 0 && conversionIdLegado) {
+    conversions.push({
+      conversionId: conversionIdLegado,
+      conversionLabel: conversionLabelLegado,
+      label: 'Principal',
+      active: true,
+    });
+  }
+
+  return {
+    gtmId: gtmIdLegado,
+    gtm: { containers },
+    meta: {
+      pixels,
+      pixelId: pixelIdLegado,
+      testEventCode: testEventCodeLegado,
+      events: eventosLegado,
+    },
+    ga4: { streams, measurementId: measurementIdLegado },
+    googleAds: { conversions, conversionId: conversionIdLegado, conversionLabel: conversionLabelLegado },
+    tiktok: { pixelCode: comoTexto(comoObjeto(raiz.tiktok).pixelCode, 64) },
+    kwai: { pixelId: comoTexto(comoObjeto(raiz.kwai).pixelId, 64) },
+  };
+}
 
 const templateSchema = z.object({
   subject: z.string().min(1).max(160),
@@ -256,13 +527,15 @@ export const DEFAULT_CONFIG: SiteConfigData = {
   },
   tracking: {
     gtmId: '',
+    gtm: { containers: [] },
     meta: {
+      pixels: [],
       pixelId: '',
       testEventCode: '',
-      events: ['page_view', 'view_content', 'begin_checkout', 'generate_lead', 'add_payment_info', 'purchase'],
+      events: [...EVENTOS_CAPI_PADRAO],
     },
-    ga4: { measurementId: '' },
-    googleAds: { conversionId: '', conversionLabel: '' },
+    ga4: { streams: [], measurementId: '' },
+    googleAds: { conversions: [], conversionId: '', conversionLabel: '' },
     tiktok: { pixelCode: '' },
     kwai: { pixelId: '' },
   },
@@ -319,7 +592,10 @@ export async function getSiteConfig(): Promise<SiteConfigData> {
     scarcity: { ...DEFAULT_CONFIG.scarcity, ...(row.scarcity as object) },
     links: { ...DEFAULT_CONFIG.links, ...(row.links as object) },
     checkout: { ...DEFAULT_CONFIG.checkout, ...((row.checkout ?? {}) as object) },
-    tracking: { ...DEFAULT_CONFIG.tracking, ...(row.tracking as object) },
+    /* Não é merge raso como os outros: `tracking` virou lista e a forma antiga
+       continua no banco. `normalizarTracking` faz o merge e a derivação do
+       legado numa passada só — ver o comentário na própria função. */
+    tracking: normalizarTracking(row.tracking),
     email: { ...DEFAULT_CONFIG.email, ...(row.email as object) },
     gatewayActive: row.gatewayActive,
     gatewayMode: row.gatewayMode,
@@ -394,7 +670,13 @@ export interface PublicConfig {
   };
   whatsapp: { url: string; message: string };
   social: Record<string, string>;
-  tracking: { gtmId: string };
+  /**
+   * `gtmIds` é a lista de containers **ativos**; `gtmId` continua sendo o
+   * primeiro deles só para não quebrar quem já lê o campo antigo. Nenhum id de
+   * pixel sai daqui: o pixel de navegador, quando existir, é o dono que monta
+   * dentro do GTM, e a medição do funil não passa por nenhum dos dois.
+   */
+  tracking: { gtmId: string; gtmIds: string[] };
   checkout: { mode: string; externalUrl: string; buttonLabel: string; openInNewTab: boolean; pollMs: number };
 }
 
@@ -410,6 +692,10 @@ export async function getPublicConfig(live: { spots?: number; buyers?: number } 
   for (const [key, url] of Object.entries(cfg.links.social)) {
     if (url) social[key] = url;
   }
+
+  /* Container desligado não viaja até o navegador: o que não vai carregar
+     também não precisa aparecer numa resposta pública. */
+  const gtmIds = cfg.tracking.gtm.containers.filter((c) => c.active).map((c) => c.id);
 
   return {
     priceCents: cfg.content.priceCents,
@@ -438,7 +724,7 @@ export async function getPublicConfig(live: { spots?: number; buyers?: number } 
     },
     whatsapp: { url: cfg.links.whatsapp.number, message: cfg.links.whatsapp.message },
     social,
-    tracking: { gtmId: cfg.tracking.gtmId },
+    tracking: { gtmId: gtmIds[0] ?? '', gtmIds },
     checkout: {
       mode: cfg.checkout.mode,
       externalUrl: cfg.checkout.externalUrl,

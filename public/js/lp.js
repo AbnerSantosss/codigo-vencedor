@@ -26,7 +26,7 @@
     socialProof: { enabled: false, intervalSec: 9, items: [] },
     whatsapp: { url: '', message: '' },
     social: {},
-    tracking: { gtmId: '' },
+    tracking: { gtmId: '', gtmIds: [] },
     checkout: { mode: 'embedded', externalUrl: '', buttonLabel: '', openInNewTab: false, pollMs: 4000 }
   };
 
@@ -132,18 +132,38 @@
   }
 
   /* O nonce vem do servidor a cada request. Sem ele a CSP bloqueia o gtm.js,
-     e o próprio GTM o repassa para as tags que ele injetar depois. */
-  function loadGtm(id) {
-    if (!id || window.__cvGtm) return;
-    window.__cvGtm = true;
+     e o próprio GTM o repassa para as tags que ele injetar depois.
+
+     Recebe a lista `gtmIds` do /api/config e também um id solto, porque a
+     resposta antiga trazia só `gtmId`. A guarda virou um mapa por container:
+     com `window.__cvGtm = true` o segundo container simplesmente não
+     carregava, e o sintoma era uma tag que "não dispara" sem erro nenhum no
+     console. */
+  function loadGtm(ids) {
+    var lista = [];
+    if (typeof ids === 'string') { lista = [ids]; }
+    else if (ids && typeof ids.length === 'number') { lista = [].slice.call(ids); }
+    if (!lista.length) return;
+
     var meta = document.querySelector('meta[name="csp-nonce"]');
     var nonce = meta ? meta.getAttribute('content') : '';
-    window.dataLayer.push({ 'gtm.start': Date.now(), event: 'gtm.js' });
-    var s = document.createElement('script');
-    s.async = true;
-    s.src = 'https://www.googletagmanager.com/gtm.js?id=' + encodeURIComponent(id);
-    if (nonce) { s.setAttribute('nonce', nonce); s.nonce = nonce; }
-    document.head.appendChild(s);
+    var carregados = (window.__cvGtm && typeof window.__cvGtm === 'object') ? window.__cvGtm : {};
+    window.__cvGtm = carregados;
+
+    var iniciou = false;
+    for (var i = 0; i < lista.length; i++) {
+      var id = lista[i];
+      if (!id || carregados[id]) continue;
+      carregados[id] = true;
+      /* `gtm.start` uma vez só: é o marco de tempo do dataLayer, que os
+         containers compartilham. Repetir sujaria a medição de carregamento. */
+      if (!iniciou) { window.dataLayer.push({ 'gtm.start': Date.now(), event: 'gtm.js' }); iniciou = true; }
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtm.js?id=' + encodeURIComponent(id);
+      if (nonce) { s.setAttribute('nonce', nonce); s.nonce = nonce; }
+      document.head.appendChild(s);
+    }
   }
 
   /* ---------------------------------------------------------------------
@@ -226,7 +246,7 @@
        outros e deixar a página sem tema ou sem rastreamento. */
     safely('checkout', function () { applyCheckoutMode(document); });
     safely('tema', function () { applyTheme(CFG.theme); });
-    safely('gtm', function () { loadGtm(CFG.tracking.gtmId); });
+    safely('gtm', function () { loadGtm(CFG.tracking.gtmIds || CFG.tracking.gtmId); });
   }
 
   /**
@@ -475,6 +495,120 @@
   }
 
   /* ---------------------------------------------------------------------
+     Termos e Privacidade — abrem em modal, não em outra página
+
+     O rodapé é o último bloco antes do checkout, e quem chega ali muitas
+     vezes já preencheu o formulário. Navegar para /termos joga fora o que
+     foi digitado, remonta o cronômetro e obriga a rolar a página inteira de
+     volta — caro demais para uma leitura de trinta segundos.
+
+     O texto não é duplicado aqui: vem por fetch das próprias /termos e
+     /privacidade e é o mesmo dos dois lados. As páginas continuam existindo
+     e continuam sendo o destino real do link — sem JS, com JS quebrado,
+     em ctrl+clique ou num buscador, o rodapé funciona como sempre
+     funcionou. O modal é enfeite por cima, não a única porta.
+     --------------------------------------------------------------------- */
+  function initDocs() {
+    var links = $$('a[data-cv-doc]');
+    var tpl = document.getElementById('cv-doc-tpl');
+    if (!links.length || !tpl) return;
+
+    var open = false;
+    var modal = null, body = null, lastFocus = null;
+    var cache = {};
+
+    function trapFocus(ev) {
+      if (ev.key !== 'Tab' || !modal) return;
+      var focusable = $$('button, a[href], [tabindex="0"]', modal).filter(function (el) { return !el.disabled; });
+      if (!focusable.length) return;
+      var first = focusable[0], last = focusable[focusable.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    }
+
+    function onKey(ev) {
+      if (ev.key === 'Escape') { close(); return; }
+      trapFocus(ev);
+    }
+
+    function close() {
+      if (!open) return;
+      open = false;
+      document.removeEventListener('keydown', onKey, true);
+      document.body.classList.remove('cv-locked');
+      if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+      modal = body = null;
+      if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+    }
+
+    /* Extrai o <article class="cv-doc"> do HTML da página. Usa DOMParser em
+       vez de innerHTML num div solto porque o segundo dispara o download de
+       imagens e o pedido de scripts do documento inteiro antes de a gente
+       jogar fora o que não interessa. */
+    function extract(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var art = doc.querySelector('.cv-doc');
+      if (!art) return null;
+      $$('script', art).forEach(function (s) { s.parentNode.removeChild(s); });
+      return { title: (doc.querySelector('.cv-doc h1') || {}).textContent || '', node: art };
+    }
+
+    function fill(data) {
+      if (!open || !modal || !body) return;
+      $('[data-cv-doc-title]', modal).textContent = data.title;
+      body.textContent = '';
+      body.appendChild(data.node.cloneNode(true));
+      body.scrollTop = 0;
+    }
+
+    function show(url, slug, link) {
+      if (open) return;
+      open = true;
+      /* Guarda o link, não o document.activeElement: num toque de celular o
+         elemento ativo pode ser o body, e aí o foco não voltaria para lugar
+         nenhum quando o modal fechasse. */
+      lastFocus = link;
+
+      modal = tpl.content.firstElementChild.cloneNode(true);
+      body = $('[data-cv-doc-body]', modal);
+      $('[data-cv-doc-close]', modal).addEventListener('click', close);
+      modal.addEventListener('click', function (ev) { if (ev.target === modal) close(); });
+
+      document.body.appendChild(modal);
+      document.body.classList.add('cv-locked');
+      document.addEventListener('keydown', onKey, true);
+      $('[data-cv-doc-close]', modal).focus();
+      track('view_content', { content_name: 'doc_' + slug });
+
+      if (cache[url]) { fill(cache[url]); return; }
+
+      fetch(url, { headers: { Accept: 'text/html' } })
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (html) {
+          var data = html && extract(html);
+          if (!data) throw new Error('sem conteúdo');
+          cache[url] = data;
+          fill(data);
+        })
+        .catch(function () {
+          /* Rede caiu no meio: em vez de deixar um modal vazio, manda para a
+             página de verdade — que é o comportamento que o link já tinha. */
+          if (open) { close(); window.location.href = url; }
+        });
+    }
+
+    links.forEach(function (link) {
+      link.addEventListener('click', function (ev) {
+        /* Ctrl/Cmd/shift/botão do meio: a pessoa pediu uma aba nova de
+           propósito. Não é hora de interceptar. */
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) return;
+        ev.preventDefault();
+        show(link.getAttribute('href'), link.getAttribute('data-cv-doc'), link);
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------------
      Card da Aposta Segura — os números sobem do zero
 
      O arquivo original do designer rodava no runtime do Claude Design
@@ -629,7 +763,8 @@
     var heroVisivel = true, formVisivel = false;
 
     function sync() {
-      var mostrar = !heroVisivel && !formVisivel;
+      var pix = $('[data-cv-step="pix"]');
+      var mostrar = !heroVisivel && !formVisivel && (!pix || pix.hidden);
       if (mostrar) {
         bar.hidden = false;
         bar.setAttribute('data-cv-buybar-on', '');
@@ -646,13 +781,16 @@
       sync();
     }, { threshold: 0 }).observe(heroCta);
 
-    var form = $('#cv-form');
+    var form = $('#checkout');
     if (form) {
       new IntersectionObserver(function (entries) {
         formVisivel = entries[0].isIntersecting;
         sync();
       }, { threshold: 0 }).observe(form);
     }
+
+    var pixStep = $('[data-cv-step="pix"]');
+    if (pixStep) new MutationObserver(sync).observe(pixStep, { attributes: true, attributeFilter: ['hidden'] });
 
     sync();
   }
@@ -788,23 +926,37 @@
 
     var maybeShowBonus = initBonus(form);
 
-    form.addEventListener('input', function () {
-      if (!startedTracked) { startedTracked = true; track('begin_checkout'); }
+    form.addEventListener('input', function (ev) {
+      if (!startedTracked) {
+        startedTracked = true;
+        /* O evento ia sem nenhum parâmetro, então "começou a preencher" era
+           tudo que dava para saber. Por qual campo a pessoa entra separa quem
+           veio pelo topo do formulário de quem pulou direto para o e-mail, e
+           o `has_email` marca quem já chegou com ele pronto (autopreencher,
+           colar) — esses dois viram lead sem esforço, os outros não. */
+        var primeiroCampo = (ev && ev.target && ev.target.name) || '';
+        track('begin_checkout', {
+          first_field: primeiroCampo,
+          has_email: validEmail(form.elements.email.value.trim())
+        });
+      }
       showError('');
       /* No `input`, e não no `blur`: o bônus é a recompensa por ter preenchido,
          e recompensa que chega depois de a pessoa sair do campo perde o efeito. */
       maybeShowBonus();
     });
 
-    /* Rascunho do lead: assim que nome e e-mail ficam válidos, o servidor
-       já sabe quem é a pessoa — é isso que permite recuperar quem sai antes
-       de apertar "Gerar Pix". Dispara ao sair do campo, não a cada tecla, e
-       só de novo se o valor mudou. */
+    /* Rascunho do lead: basta o e-mail ser válido. Exigir nome e sobrenome
+       junto jogava fora quem digita o e-mail e desiste — que é exatamente o
+       contato recuperável, porque é por e-mail que se volta a falar com ele.
+       O nome segue vazio quando ainda não existe; o submit completa depois.
+       Dispara ao sair do campo, não a cada tecla, e só de novo se o valor
+       mudou. */
     var lastDraft = '';
     function saveDraft() {
       var nome = form.elements.nome.value.trim();
       var email = form.elements.email.value.trim();
-      if (nome.split(/\s+/).length < 2 || !validEmail(email)) return;
+      if (!validEmail(email)) return;
       var key = nome + '|' + email.toLowerCase();
       if (key === lastDraft) return;
       lastDraft = key;
@@ -823,16 +975,83 @@
     }
     form.elements.nome.addEventListener('blur', saveDraft);
     form.elements.email.addEventListener('blur', saveDraft);
-    /* Quem fecha a aba com os dois campos preenchidos também vira rascunho. */
+    /* Quem fecha a aba com o e-mail preenchido também vira rascunho. */
     window.addEventListener('pagehide', saveDraft);
+
+    /* ---------------------------------------------------------------------
+       Abandono de checkout
+
+       O rascunho guarda o contato; este evento guarda o momento. Sem ele o
+       funil não distingue quem nunca chegou ao formulário de quem chegou,
+       preencheu metade e saiu — e é só o segundo grupo que vale abordar.
+
+       O CPF nunca sai inteiro daqui: só os três últimos dígitos, e só com o
+       número completo digitado. No banco ele vive cifrado; num evento de
+       funil, que é lido no painel e encaminhado adiante, o número inteiro
+       não teria por que existir.
+       --------------------------------------------------------------------- */
+    var pixGerado = false;
+    var abandonoEnviado = false;
+
+    function soDigitos(v) { return (v || '').replace(/\D/g, ''); }
+
+    function trackAbandono() {
+      /* Sem `startedTracked` ninguém tocou no formulário: sair da página aí
+         não é abandono de checkout, é só alguém passando pela landing page.
+         A flag própria vale para os dois gatilhos abaixo, que disparam
+         juntos em boa parte dos navegadores. */
+      if (abandonoEnviado || !startedTracked || pixGerado) return;
+      /* O passo do Pix na tela conta como cobrança gerada mesmo que o
+         `showPix` não tenha rodado nesta carga (aba restaurada, por exemplo). */
+      if (stepPix && !stepPix.hidden) return;
+      abandonoEnviado = true;
+
+      var nome = form.elements.nome.value.trim();
+      var email = form.elements.email.value.trim();
+      var fone = soDigitos(form.elements.fone.value);
+      var cpf = soDigitos(form.elements.cpf.value);
+      var emailOk = validEmail(email);
+
+      var preenchidos = [];
+      if (nome) preenchidos.push('nome');
+      if (email) preenchidos.push('email');
+      if (cpf) preenchidos.push('cpf');
+      if (fone) preenchidos.push('fone');
+
+      track('checkout_abandoned', {
+        reason: 'fechou_a_tela',
+        fields_filled: preenchidos,
+        has_email: emailOk,
+        email: emailOk ? email : '',
+        nome: nome,
+        fone: fone,
+        cpf_last3: cpf.length === 11 ? cpf.slice(-3) : ''
+      });
+    }
+
+    window.addEventListener('pagehide', trackAbandono);
+    /* O `pagehide` não chega quando o celular mata o navegador em segundo
+       plano, e 90% do público é celular — sozinho ele perderia justamente os
+       abandonos que interessam. O `visibilitychange` é o único gancho que os
+       dois sistemas ainda garantem ao sair da tela. */
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') trackAbandono();
+    });
 
     function showError(msg, field) {
       if (!errorEl) return;
       errorEl.textContent = msg || '';
       errorEl.hidden = !msg;
-      $$('.cv-input', form).forEach(function (i) { i.removeAttribute('aria-invalid'); });
+      $$('.cv-input', form).forEach(function (i) { i.removeAttribute('aria-invalid'); if ((i.getAttribute('aria-describedby') || '').indexOf('cv-error-') === 0) i.removeAttribute('aria-describedby'); });
+      $$('.cv-field-error', form).forEach(function (e) { e.remove(); });
       if (field && form.elements[field]) {
         form.elements[field].setAttribute('aria-invalid', 'true');
+        var inlineError = document.createElement('span');
+        inlineError.className = 'cv-field-error';
+        inlineError.id = 'cv-error-' + field;
+        inlineError.textContent = msg;
+        form.elements[field].after(inlineError);
+        form.elements[field].setAttribute('aria-describedby', inlineError.id);
         form.elements[field].focus();
       }
     }
@@ -891,12 +1110,15 @@
     });
 
     function showPix(res, nome) {
+      /* Fecha o abandono: daqui em diante sair da tela é ir pagar no banco,
+         não desistir. */
+      pixGerado = true;
       $('[data-cv-firstname]').textContent = (nome || '').split(' ')[0];
       $('[data-cv-emv]').textContent = res.emv || '';
 
       var qr = $('[data-cv-qr]');
+      qr.closest('.cv-pix-qr').hidden = !res.qrCodeBase64;
       if (res.qrCodeBase64) qr.src = 'data:image/png;base64,' + res.qrCodeBase64;
-      else qr.closest('.cv-pix-qr').hidden = true;
 
       /* Cobrança de demonstração: avisa e libera o botão que confirma o
          pagamento, para dar de percorrer o fluxo inteiro sem gateway. */
@@ -910,7 +1132,8 @@
 
       stepForm.hidden = true;
       stepPix.hidden = false;
-      stepPix.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.body.classList.add('cv-pix-active');
+      window.scrollTo({ top: 0, behavior: 'instant' });
 
       /* O prazo vem do gateway; nunca fixamos um tempo nosso, porque ele
          varia por transação. */
@@ -976,6 +1199,7 @@
       clearInterval(expiryTimer);
       stepPix.hidden = true;
       stepForm.hidden = false;
+      document.body.classList.remove('cv-pix-active');
       stepForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
 
@@ -1115,9 +1339,11 @@
      --------------------------------------------------------------------- */
   function boot() {
     applyConfig();
+    document.documentElement.classList.toggle('cv-real-deadline', CFG.countdown.mode === 'campaign' && Date.parse(CFG.countdown.endsAt) > Date.now());
     initCountdown();
     initFaq();
     initVideo();
+    safely('docs-modal', initDocs);
     initApostaSeguraCard();
     initCheckout();
     initCtas();
@@ -1160,6 +1386,59 @@
      esperar por ele faria o checkout piscar na tela antes de ser escondido.
      O script e `defer`, entao isto executa antes da primeira pintura. */
   initCheckoutReveal();
+
+  // Move os mesmos elementos, sem duplicar precos ou hooks de configuracao.
+  // No desktop e no checkout externo, restaura as posicoes originais.
+  (function initMobileCheckoutPriority() {
+    var box = document.querySelector('.cv-checkout-box');
+    var summary = document.querySelector('.cv-checkout-summary');
+    if (!box || !summary) return;
+    var details = document.createElement('details');
+    details.className = 'cv-checkout-details';
+    details.id = 'cv-checkout-details';
+    var caption = document.createElement('summary');
+    caption.textContent = 'Ver tudo o que está incluído';
+    details.appendChild(caption);
+    var detailsLink = document.createElement('a');
+    detailsLink.className = 'cv-mobile-copy cv-details-link';
+    detailsLink.href = '#cv-checkout-details';
+    detailsLink.textContent = 'Ver tudo o que está incluído';
+    detailsLink.addEventListener('click', function () { details.open = true; });
+    summary.appendChild(detailsLink);
+    details.hidden = true;
+    box.appendChild(details);
+    var items = ['.cv-seals', '.cv-order-rows', '.cv-spots', '.cv-alert'].map(function (selector) {
+      var node = summary.querySelector(selector);
+      if (!node) return null;
+      var anchor = document.createComment('checkout desktop position');
+      node.before(anchor);
+      return { node: node, anchor: anchor };
+    }).filter(Boolean);
+    var value = box.querySelector('.cv-value');
+    if (value) {
+      var valueAnchor = document.createComment('benefits desktop position');
+      value.before(valueAnchor);
+      items.push({ node: value, anchor: valueAnchor });
+    }
+    var formBlock = box.querySelector('.cv-checkout-form');
+    var formAnchor = document.createComment('form desktop position');
+    formBlock.before(formAnchor);
+    var mobile = window.matchMedia('(max-width: 47.99em)');
+    function arrange() {
+      var compact = mobile.matches && !box.classList.contains('cv-checkout-box--link');
+      items.forEach(function (item) {
+        if (compact) details.appendChild(item.node);
+        else item.anchor.after(item.node);
+      });
+      details.hidden = !compact;
+      detailsLink.hidden = !compact;
+      if (compact) { summary.after(formBlock); formBlock.after(details); }
+      else formAnchor.after(formBlock);
+    }
+    mobile.addEventListener('change', arrange);
+    new MutationObserver(arrange).observe(box, { attributes: true, attributeFilter: ['class'] });
+    arrange();
+  })();
 
   fetch('/api/config', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.ok ? r.json() : null; })

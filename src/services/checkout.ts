@@ -5,6 +5,15 @@ import { getSiteConfig } from './config.js';
 import { encrypt } from './crypto.js';
 import { newReference } from '../lib/cpf.js';
 import { firstTouchDoVisitante } from '../lib/attribution.js';
+import { dispatchOutbound } from './outbound.js';
+
+interface Log {
+  info: (o: unknown, m?: string) => void;
+  warn: (o: unknown, m?: string) => void;
+}
+
+/** Logger de última instância, para quem chamar sem passar um. */
+const SEM_LOG: Log = { info: () => undefined, warn: () => undefined };
 
 export interface CheckoutInput {
   nome: string;
@@ -22,6 +31,13 @@ export interface CheckoutInput {
   fbc?: string;
   ip?: string;
   userAgent?: string;
+  /**
+   * `event_id` do evento que o navegador acabou de disparar
+   * (`add_payment_info`). Só serve para achar o `FunnelEvent` correspondente e
+   * anexar o bloco `site` ao webhook `pix.created`; a cobrança não depende
+   * dele.
+   */
+  eventId?: string;
 }
 
 export interface CheckoutResult {
@@ -56,7 +72,7 @@ async function uniqueReference(): Promise<string> {
   return `${newReference()}${Date.now().toString(36).slice(-3).toUpperCase()}`;
 }
 
-export async function createCheckout(input: CheckoutInput): Promise<CheckoutResult> {
+export async function createCheckout(input: CheckoutInput, log: Log = SEM_LOG): Promise<CheckoutResult> {
   const cfg = await getSiteConfig();
   const gateway = await resolveGateway();
 
@@ -207,6 +223,47 @@ export async function createCheckout(input: CheckoutInput): Promise<CheckoutResu
       },
     }),
   ]);
+
+  /**
+   * Dois webhooks, um momento só — e é de propósito.
+   *
+   * "Formulário enviado" (`checkout.started`) e "cobrança gerada"
+   * (`pix.created`) acontecem na mesma requisição hoje, mas são perguntas
+   * diferentes para quem integra CRM: a primeira é a intenção de compra com
+   * os dados completos, a segunda é o meio de pagamento existindo. Se um dia
+   * entrar cartão, a primeira continua valendo e a segunda não.
+   *
+   * Sem `await` e com `.catch()`, como no resto do projeto: uma venda já
+   * criada não pode falhar porque o n8n de alguém está fora do ar.
+   */
+  dispatchOutbound('checkout.started', { orderId: order.id, leadId: lead.id }, log).catch((err) =>
+    log.warn({ err, orderId: order.id }, 'falha ao enfileirar webhook de saída'),
+  );
+
+  /**
+   * O `pix.created` sai depois de tentar achar o `FunnelEvent` do navegador —
+   * é ele que traz o bloco `site` (IP, user-agent, página, sessão, fbp/fbc)
+   * para o corpo do webhook.
+   *
+   * A busca fica **dentro** do encadeamento sem `await`: o comprador não pode
+   * esperar por ela. E se o evento ainda não estiver gravado (o `sendBeacon`
+   * do navegador e este POST correm juntos), o webhook sai sem o bloco `site`
+   * em vez de não sair — perder o disparo seria bem pior do que perder o
+   * detalhe.
+   */
+  const eventoDoNavegador = input.eventId
+    ? prisma.funnelEvent.findUnique({ where: { eventId: input.eventId }, select: { id: true } }).catch(() => null)
+    : Promise.resolve(null);
+
+  eventoDoNavegador
+    .then((ev) =>
+      dispatchOutbound(
+        'pix.created',
+        { orderId: order.id, leadId: lead.id, ...(ev ? { funnelEventId: ev.id } : {}) },
+        log,
+      ),
+    )
+    .catch((err) => log.warn({ err, orderId: order.id }, 'falha ao enfileirar webhook de saída'));
 
   return {
     orderId: order.id,

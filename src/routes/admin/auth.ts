@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
-import { env } from '../../env.js';
+import { env, isProd } from '../../env.js';
 import { clientIp } from '../../lib/security.js';
 import { audit } from '../../lib/audit.js';
 import { getSiteConfig } from '../../services/config.js';
@@ -112,6 +112,47 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  /**
+   * Atalho de login só para desenvolvimento — entra como o primeiro `owner`
+   * cadastrado sem pedir senha.
+   *
+   * Some inteiramente em produção: com `isProd` a rota responde 404 em vez
+   * de 403, para não revelar nem que ela existe. Nunca checar isso só no
+   * front — o botão que chama esta rota é decorativo, quem impede o uso
+   * indevido é o servidor.
+   */
+  app.post('/auth/dev-login', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    if (isProd) return reply.code(404).send({ error: 'nao_encontrado' });
+
+    const user = await prisma.adminUser.findFirst({
+      where: { disabledAt: null, role: 'owner' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!user) return reply.code(404).send({ error: 'sem_admin' });
+
+    await prisma.adminUser.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
+    });
+
+    const ip = clientIp(req, env.TRUST_CLOUDFLARE);
+    const accessToken = await signAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword,
+    });
+    const refreshToken = await issueRefreshToken(user.id, ip, req.headers['user-agent']);
+    setAuthCookies(reply, accessToken, refreshToken);
+
+    await audit(req, 'auth.dev_login', 'AdminUser', user.id);
+
+    return reply.send({
+      user: { email: user.email, name: user.name, role: user.role },
+      mustChangePassword: user.mustChangePassword,
+    });
+  });
+
   /** Renova o access token a partir do refresh, com rotação. */
   app.post('/auth/refresh', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
     const current = req.cookies[REFRESH_COOKIE];
@@ -205,9 +246,17 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
-  /** Usado pelo painel para saber se já existe sessão sem precisar de 401 no console. */
+  /**
+   * Usado pelo painel para saber se já existe sessão sem precisar de 401 no
+   * console, e se o atalho "entrar como admin" deve aparecer na tela de
+   * login — `devLoginAvailable` reflete o `NODE_ENV` real do servidor, não
+   * uma flag do front.
+   */
   app.get('/auth/status', async (req, reply) => {
-    return reply.send({ authenticated: Boolean(req.cookies[ACCESS_COOKIE] || req.cookies[REFRESH_COOKIE]) });
+    return reply.send({
+      authenticated: Boolean(req.cookies[ACCESS_COOKIE] || req.cookies[REFRESH_COOKIE]),
+      devLoginAvailable: !isProd,
+    });
   });
 
   /* ------------------------------------------------------------------ *

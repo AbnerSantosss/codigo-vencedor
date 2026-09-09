@@ -1,0 +1,13 @@
+# A imagem é construída em Linux (node:24-alpine). Guardar tudo com LF no
+# repositório evita que um CRLF do Windows quebre script ou build na VPS.
+* text=auto eol=lf
+
+# Binários: nunca normalizar.
+*.webp binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.mp4  binary
+*.woff binary
+*.woff2 binary
+*.ico  binary

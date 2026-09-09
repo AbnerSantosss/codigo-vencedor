@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
-import { maskCpf } from './crypto.js';
+import { montarPayload, type EventoSaida, type RefSaida } from './eventPayload.js';
 
 /**
  * Webhooks de saída — avisar um sistema de fora quando algo acontece aqui.
@@ -27,42 +27,22 @@ import { maskCpf } from './crypto.js';
  */
 
 /* ------------------------------------------------------------------ *
- * Catálogo de eventos
+ * Catálogo de eventos e montagem do corpo
  * ------------------------------------------------------------------ */
-
-export const EVENTOS_SAIDA = {
-  'order.paid': 'Pagamento confirmado',
-  'order.refunded': 'Pagamento estornado',
-  'pix.created': 'Pix gerado',
-  'lead.created': 'Lead capturado (nome e e-mail)',
-  'checkout.started': 'Formulário de checkout enviado',
-  'checkout.abandoned': 'Checkout abandonado',
-  'pix.abandoned': 'Pix expirou sem pagamento',
-} as const;
-
-export type EventoSaida = keyof typeof EVENTOS_SAIDA;
-
-export const EVENTOS_SAIDA_LISTA = Object.keys(EVENTOS_SAIDA) as EventoSaida[];
-
-export function eventoSaidaValido(v: unknown): v is EventoSaida {
-  return typeof v === 'string' && v in EVENTOS_SAIDA;
-}
 
 /**
- * `page_view` não está no catálogo, e a ausência é deliberada.
- *
- * Ele acontece milhares de vezes por dia e geraria uma linha de entrega e
- * uma requisição HTTP por visita — o destino seria inundado, a tabela de
- * entregas cresceria mais rápido que a de eventos, e o job de retentativa
- * passaria o tempo todo drenando fila. Quem precisa de visita em tempo real
- * usa o GTM, que é onde esse volume é problema resolvido.
+ * O catálogo e o montador do payload moram em `eventPayload.ts`, e não aqui,
+ * porque o backoffice precisa montar exatamente o mesmo corpo para mostrar ao
+ * dono o que o destino recebeu. Enquanto eram duas montagens elas divergiam a
+ * cada campo novo. Reexportados para não quebrar quem já importa daqui.
  */
-
-/* ------------------------------------------------------------------ *
- * Referência da entrega
- * ------------------------------------------------------------------ */
-
-export type RefSaida = { orderId: string } | { leadId: string };
+export {
+  EVENTOS_SAIDA,
+  EVENTOS_SAIDA_LISTA,
+  eventoSaidaValido,
+  eventoSaidaDoSite,
+} from './eventPayload.js';
+export type { EventoSaida, RefSaida, CorpoSaida } from './eventPayload.js';
 
 interface Log {
   info: (o: unknown, m?: string) => void;
@@ -129,118 +109,6 @@ export function conferirUrlDestino(url: string): { ok: true; url: URL } | { ok: 
   return { ok: true, url: u };
 }
 
-/* ------------------------------------------------------------------ *
- * Montagem do corpo
- * ------------------------------------------------------------------ */
-
-interface CorpoSaida {
-  event: EventoSaida;
-  /** Identificador da entrega. O destino usa isto para idempotência. */
-  id: string;
-  sentAt: string;
-  order?: Record<string, unknown>;
-  lead?: Record<string, unknown>;
-}
-
-async function montarPayload(event: EventoSaida, ref: RefSaida): Promise<CorpoSaida | null> {
-  const base = { event, id: randomUUID(), sentAt: new Date().toISOString() };
-
-  if ('orderId' in ref) {
-    const order = await prisma.order.findUnique({
-      where: { id: ref.orderId },
-      select: {
-        publicId: true,
-        reference: true,
-        amountCents: true,
-        currency: true,
-        status: true,
-        provider: true,
-        providerPaymentId: true,
-        createdAt: true,
-        paidAt: true,
-        expiresAt: true,
-        refundedAt: true,
-        utm: true,
-        firstTouch: true,
-        pixCharge: { select: { expiresAt: true } },
-        lead: {
-          select: {
-            nome: true,
-            email: true,
-            fone: true,
-            cpfLast3: true,
-            visitorId: true,
-            sessionId: true,
-            firstTouch: true,
-          },
-        },
-      },
-    });
-    if (!order) return null;
-
-    return {
-      ...base,
-      order: {
-        reference: order.reference,
-        publicId: order.publicId,
-        amount: order.amountCents / 100,
-        amountCents: order.amountCents,
-        currency: order.currency,
-        status: order.status,
-        provider: order.provider,
-        providerPaymentId: order.providerPaymentId,
-        createdAt: order.createdAt.toISOString(),
-        paidAt: order.paidAt?.toISOString() ?? null,
-        expiresAt: (order.expiresAt ?? order.pixCharge?.expiresAt)?.toISOString() ?? null,
-        refundedAt: order.refundedAt?.toISOString() ?? null,
-        utm: order.utm ?? null,
-        firstTouch: order.firstTouch ?? order.lead.firstTouch ?? null,
-      },
-      lead: {
-        nome: order.lead.nome,
-        email: order.lead.email,
-        fone: order.lead.fone,
-        // Mascarado de propósito — ver o comentário no topo do arquivo.
-        cpfMasked: order.lead.cpfLast3 ? maskCpf(order.lead.cpfLast3) : null,
-        visitorId: order.lead.visitorId,
-        sessionId: order.lead.sessionId,
-      },
-    };
-  }
-
-  const lead = await prisma.lead.findUnique({
-    where: { id: ref.leadId },
-    select: {
-      nome: true,
-      email: true,
-      fone: true,
-      cpfLast3: true,
-      status: true,
-      visitorId: true,
-      sessionId: true,
-      utm: true,
-      firstTouch: true,
-      createdAt: true,
-    },
-  });
-  if (!lead) return null;
-
-  return {
-    ...base,
-    lead: {
-      nome: lead.nome,
-      email: lead.email,
-      fone: lead.fone,
-      cpfMasked: lead.cpfLast3 ? maskCpf(lead.cpfLast3) : null,
-      status: lead.status,
-      visitorId: lead.visitorId,
-      sessionId: lead.sessionId,
-      utm: lead.utm ?? null,
-      firstTouch: lead.firstTouch ?? null,
-      createdAt: lead.createdAt.toISOString(),
-    },
-  };
-}
 
 /* ------------------------------------------------------------------ *
  * Enfileirar
@@ -268,7 +136,7 @@ export async function dispatchOutbound(event: EventoSaida, ref: RefSaida, log: L
       return 0;
     }
 
-    const orderId = 'orderId' in ref ? ref.orderId : null;
+    const orderId = ref.orderId ?? null;
 
     const criadas = await prisma.$transaction(
       alvos.map((a) =>

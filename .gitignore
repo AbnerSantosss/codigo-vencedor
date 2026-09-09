@@ -12,3 +12,24 @@ panel/dist/
 _backup-original/
 landing-demo-antigravity/
 scratch/
+
+# Rede de segurança para repositório público: nada de chave, certificado ou
+# credencial pode entrar aqui, nem por acidente nem por ferramenta externa.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.crt
+id_rsa*
+credentials.json
+service-account*.json
+secrets/
+.secrets/
+*.env.bak
+.envrc
+
+# Lixo de sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini

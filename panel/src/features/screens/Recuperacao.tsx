@@ -21,6 +21,7 @@ import { Kpi, KpiGrid, Segmented } from '@/components/ui/metrics';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { chaves, useAcao } from '../hooks';
+import { OriginBadge } from '@/components/ui/origin';
 
 /* ==========================================================================
    Recuperação de vendas
@@ -58,9 +59,10 @@ function Dado({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
 
 function DetalheUtm({ utm }: { utm: Record<string, string> | null }) {
   const itens = Object.entries(utm ?? {}).filter(([, v]) => v);
-  if (!itens.length) return <Dado rotulo="Origem" valor="direto" />;
+  if (!itens.length) return <Dado rotulo="Origem" valor={<OriginBadge />} />;
   return (
     <>
+      <Dado rotulo="Canal" valor={<OriginBadge source={utm?.utm_source} />} />
       {itens.map(([k, v]) => (
         <Dado key={k} rotulo={k.replace('utm_', '')} valor={v} />
       ))}
@@ -158,7 +160,7 @@ export function TelaRecuperacao() {
                           {r.nome}
                           <span className="block text-2xs text-muted">{r.email}</span>
                         </Td>
-                        <Td muted>{r.utm?.utm_source ?? 'direto'}</Td>
+                        <Td><OriginBadge source={r.utm?.utm_source} /></Td>
                         <Td>
                           <MarcaEmail recovery={r.recovery} />
                         </Td>
@@ -186,6 +188,7 @@ export function TelaRecuperacao() {
                     <tr>
                       <Th>Quando</Th>
                       <Th>Pessoa</Th>
+                      <Th>Origem</Th>
                       <Th num>Valor</Th>
                       <Th>E-mail de recuperação</Th>
                     </tr>
@@ -206,6 +209,7 @@ export function TelaRecuperacao() {
                           {r.nome}
                           <span className="block text-2xs text-muted">{r.email}</span>
                         </Td>
+                        <Td><OriginBadge source={r.utm?.utm_source} /></Td>
                         <Td num>{brl(r.amountCents)}</Td>
                         <Td>
                           <MarcaEmail recovery={r.recovery} />

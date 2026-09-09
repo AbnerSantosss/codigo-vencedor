@@ -20,6 +20,14 @@ export const chaves = {
   webhooks: ['webhooks'] as const,
   eventsSummary: (dias: number) => ['events', 'summary', dias] as const,
   events: (dias: number, evento: string | null) => ['events', 'list', dias, evento] as const,
+  /**
+   * Payload de um evento — chaveado só pelo id da linha.
+   *
+   * Sem período nem filtro na chave de propósito: o payload gravado não muda
+   * mais, então a mesma linha reaberta depois de trocar o filtro reaproveita
+   * o que já está em cache em vez de bater no servidor de novo.
+   */
+  eventDetail: (id: string) => ['events', 'detail', id] as const,
   recovery: (dias: number) => ['recovery', dias] as const,
   metrics: (dias: number) => ['metrics', dias] as const,
   inbound: ['webhooks', 'inbound'] as const,

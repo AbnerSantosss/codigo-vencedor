@@ -41,6 +41,48 @@ export const SECRET_KEYS = {
 
 export type SecretKey = (typeof SECRET_KEYS)[keyof typeof SECRET_KEYS];
 
+/* ------------------------------------------------------------------ *
+ * Chaves por instância
+ *
+ * Com N pixels da Meta e N streams do GA4, um token só não serve: cada pixel
+ * costuma viver numa conta de anúncios diferente, com token próprio. A chave
+ * ganha o id no fim — `meta.capiToken:1624114999139319`.
+ *
+ * A lista fechada continua fechada para todo o resto. Ela existe para que uma
+ * rota mal revisada não consiga gravar chave arbitrária na tabela de segredos,
+ * então o que se relaxa aqui são **dois padrões**, não a regra.
+ * ------------------------------------------------------------------ */
+
+export type SecretKeyDinamica = `meta.capiToken:${string}` | `ga4.apiSecret:${string}`;
+
+/** Qualquer chave aceitável: a lista fechada mais as duas por instância. */
+export type SecretKeyValida = SecretKey | SecretKeyDinamica;
+
+const CHAVES_FIXAS: ReadonlySet<string> = new Set<string>(Object.values(SECRET_KEYS));
+
+/** O id no sufixo é validado com o mesmo formato do `trackingSchema`. */
+const CHAVES_POR_INSTANCIA: readonly RegExp[] = [/^meta\.capiToken:\d{5,25}$/, /^ga4\.apiSecret:G-[A-Z0-9]+$/];
+
+/** Só estas duas famílias aceitam sufixo; serve para a rota de rastreamento
+ *  liberar a chave por pixel sem abrir as chaves de gateway junto. */
+export function isChaveDinamicaDeRastreamento(key: string): key is SecretKeyDinamica {
+  return CHAVES_POR_INSTANCIA.some((re) => re.test(key));
+}
+
+export function isSecretKey(key: string): key is SecretKeyValida {
+  return CHAVES_FIXAS.has(key) || isChaveDinamicaDeRastreamento(key);
+}
+
+/** Token da CAPI daquele pixel. */
+export function metaCapiTokenKey(pixelId: string): SecretKeyDinamica {
+  return `${SECRET_KEYS.metaCapiToken}:${pixelId}`;
+}
+
+/** API secret do Measurement Protocol daquela stream. */
+export function ga4ApiSecretKey(measurementId: string): SecretKeyDinamica {
+  return `${SECRET_KEYS.ga4ApiSecret}:${measurementId}`;
+}
+
 /**
  * Cache em memória: o gateway lê estas chaves a cada cobrança.
  *
@@ -73,16 +115,36 @@ async function loadAll(): Promise<Map<string, string>> {
   return map;
 }
 
-export async function getSecret(key: SecretKey): Promise<string | null> {
+export async function getSecret(key: SecretKeyValida): Promise<string | null> {
   return (await loadAll()).get(key) ?? null;
 }
 
-export async function getSecrets(keys: SecretKey[]): Promise<Record<string, string | null>> {
+export async function getSecrets(keys: SecretKeyValida[]): Promise<Record<string, string | null>> {
   const all = await loadAll();
   return Object.fromEntries(keys.map((k) => [k, all.get(k) ?? null]));
 }
 
-export async function setSecret(key: SecretKey, value: string, updatedBy: string): Promise<void> {
+/**
+ * Primeira chave que existir, na ordem dada.
+ *
+ * É o que faz a instalação atual continuar funcionando: quem cadastra o
+ * primeiro pixel na forma nova ainda tem o token no `meta.capiToken` antigo,
+ * então a busca é `meta.capiToken:<id>` e, faltando, o legado.
+ */
+export async function getFirstSecret(keys: SecretKeyValida[]): Promise<string | null> {
+  const all = await loadAll();
+  for (const key of keys) {
+    const value = all.get(key);
+    if (value) return value;
+  }
+  return null;
+}
+
+export async function setSecret(key: SecretKeyValida, value: string, updatedBy: string): Promise<void> {
+  // Última barreira: nenhuma rota grava chave fora do formato permitido, mesmo
+  // que o filtro dela deixe passar.
+  if (!isSecretKey(key)) throw new Error(`chave de segredo nao permitida: ${key}`);
+
   const trimmed = value.trim();
 
   if (!trimmed) {
@@ -100,7 +162,7 @@ export async function setSecret(key: SecretKey, value: string, updatedBy: string
 }
 
 /** O que o painel pode ver: quais chaves existem, nunca o conteúdo. */
-export async function secretsStatus(keys: SecretKey[]): Promise<Record<string, boolean>> {
+export async function secretsStatus(keys: SecretKeyValida[]): Promise<Record<string, boolean>> {
   const all = await loadAll();
   return Object.fromEntries(keys.map((k) => [k, all.has(k)]));
 }

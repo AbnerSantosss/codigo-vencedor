@@ -23,6 +23,7 @@ function Moldura({
   children,
   rodape,
   onSubmit,
+  login = false,
 }: {
   titulo: React.ReactNode;
   sub: string;
@@ -30,18 +31,30 @@ function Moldura({
   children: React.ReactNode;
   rodape?: React.ReactNode;
   onSubmit: (e: React.FormEvent) => void;
+  login?: boolean;
 }) {
   return (
-    <div className="grid min-h-svh place-items-center p-5">
+    <div className={login ? 'admin-login' : 'grid min-h-svh place-items-center p-5'}>
+      {login ? (
+        <section className="admin-login-intro" aria-label="Código Vencedor — Backoffice">
+          <a href="/" className="admin-login-brand"><img src="/assets/logo.png" width="640" height="238" alt="Código Vencedor" /></a>
+          <p className="admin-login-eyebrow">BACKOFFICE · CÓDIGO VENCEDOR</p>
+          <h1>Sua operação.<br /><span>Sob seu controle.</span></h1>
+          <p className="admin-login-description">Acompanhe pedidos, gerencie sua página e cuide de cada etapa da venda em um só lugar.</p>
+          <div className="admin-login-context"><ShieldCheck size={20} aria-hidden="true" /><span>Área exclusiva da equipe</span></div>
+        </section>
+      ) : null}
       <form
         onSubmit={onSubmit}
-        className="w-[min(100%,24rem)] rounded-lg border border-line bg-surface p-6 shadow-float sm:p-8"
+        className={login ? 'admin-login-form' : 'w-[min(100%,24rem)] rounded-lg border border-line bg-surface p-6 shadow-float sm:p-8'}
       >
-        <div className="mb-1 text-xl font-extrabold tracking-tight">{titulo}</div>
+        {login ? <div className="admin-login-lock"><ShieldCheck size={24} aria-hidden="true" /></div> : null}
+        <h2 className="mb-1 text-xl font-extrabold tracking-tight">{titulo}</h2>
         <p className="mb-6 text-sm text-muted">{sub}</p>
         {aviso ? <Callout tom={aviso.tom}>{aviso.texto}</Callout> : null}
         <div className="grid gap-4">{children}</div>
         {rodape ? <div className="mt-5 text-center">{rodape}</div> : null}
+        {login ? <p className="admin-login-note">Acesso restrito a usuários autorizados.</p> : null}
       </form>
     </div>
   );
@@ -65,11 +78,14 @@ interface LoginResponse {
 export function Login({
   mensagem,
   tom = 'err',
+  devLoginAvailable = false,
   onEntrou,
   onEsqueci,
 }: {
   mensagem?: string | null;
   tom?: Tom;
+  /** Só true quando o servidor confirma `NODE_ENV !== 'production'`. */
+  devLoginAvailable?: boolean;
   onEntrou: (r: LoginResponse) => void;
   onEsqueci: (email: string) => void;
 }) {
@@ -77,6 +93,7 @@ export function Login({
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [entrandoDev, setEntrandoDev] = useState(false);
 
   async function submeter(e: React.FormEvent) {
     e.preventDefault();
@@ -105,10 +122,35 @@ export function Login({
     }
   }
 
+  /**
+   * Atalho de desenvolvimento: entra como o `owner` sem senha.
+   *
+   * O botão só aparece quando o servidor disse que não está em produção —
+   * mas quem realmente decide isso é a rota (`/auth/dev-login` responde 404
+   * em produção), não este `if`.
+   */
+  async function entrarComoDev() {
+    setEntrandoDev(true);
+    setErro(null);
+    try {
+      const res = await api<LoginResponse>('/auth/dev-login', { method: 'POST' });
+      onEntrou(res);
+    } catch (err) {
+      setErro(
+        err instanceof ApiError && err.data.error === 'sem_admin'
+          ? 'Nenhum administrador cadastrado ainda — rode o seed.'
+          : descreverErro(err),
+      );
+    } finally {
+      setEntrandoDev(false);
+    }
+  }
+
   return (
     <Moldura
-      titulo={Marca}
-      sub="Painel administrativo"
+      login
+      titulo="Bem-vindo de volta"
+      sub="Entre com seus dados para acessar o painel."
       aviso={erro ? { tom: 'err', texto: erro } : mensagem ? { tom, texto: mensagem } : null}
       onSubmit={submeter}
       rodape={
@@ -123,7 +165,6 @@ export function Login({
           type="email"
           autoComplete="username"
           required
-          autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -139,8 +180,19 @@ export function Login({
         />
       </Field>
       <Button type="submit" block loading={enviando}>
-        Entrar
+        Entrar no painel
       </Button>
+      {devLoginAvailable ? (
+        <Button
+          type="button"
+          variant="ghost"
+          block
+          loading={entrandoDev}
+          onClick={entrarComoDev}
+        >
+          Entrar como admin (dev)
+        </Button>
+      ) : null}
     </Moldura>
   );
 }

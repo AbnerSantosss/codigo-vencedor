@@ -6,6 +6,7 @@ import { clientIp } from '../lib/security.js';
 import { readVisitorId } from '../lib/visitor.js';
 import { sanitizeUtm } from '../lib/attribution.js';
 import { forwardEvent } from '../services/conversions.js';
+import { dispatchOutbound } from '../services/outbound.js';
 
 /**
  * Eventos de funil vindos da landing page.
@@ -32,8 +33,17 @@ const ALLOWED_EVENTS = new Set([
   'begin_checkout',
   'generate_lead',
   'add_payment_info',
+  'checkout_abandoned',
   'purchase',
 ]);
+
+/**
+ * `pix_abandoned` NÃO entra nesta lista, e é de propósito.
+ *
+ * Ele nasce no servidor, quando o job de recuperação vê a cobrança vencer.
+ * Uma rota pública capaz de registrar "Pix abandonado" só serviria para
+ * qualquer um encher o dashboard do dono com abandono que nunca existiu.
+ */
 
 /**
  * Teto separado para `click`.
@@ -71,6 +81,128 @@ function cliqueDentroDoTeto(ip: string): boolean {
   if (atual.n >= CLICK_MAX) return false;
   atual.n += 1;
   return true;
+}
+
+interface Log {
+  info: (o: unknown, m?: string) => void;
+  warn: (o: unknown, m?: string) => void;
+}
+
+/**
+ * Tira CPF completo do `params` antes de qualquer gravação.
+ *
+ * O CPF vive cifrado em `Lead.cpfEnc` e só sai mascarado ou nos três últimos
+ * dígitos — é a regra do projeto inteiro. `params` é um objeto livre vindo do
+ * navegador, ou seja, exatamente o caminho por onde essa regra fura sem
+ * ninguém perceber: bastaria a página passar a mandar `cpf` para o número
+ * inteiro ficar em claro na tabela de eventos e, pior, no corpo do webhook de
+ * saída, que vai para uma URL digitada num formulário.
+ *
+ * Vale para todos os eventos, não só o `checkout_abandoned`: a garantia tem
+ * que ser da rota, senão volta a depender de quem escrever o próximo evento
+ * lembrar dela. `cpf_last3` continua passando — três dígitos não identificam
+ * ninguém e é o que o dono usa para conferir o pedido.
+ */
+function semCpfCompleto(params: Record<string, unknown>): Record<string, unknown> {
+  const limpo: Record<string, unknown> = {};
+
+  for (const [chave, valor] of Object.entries(params)) {
+    if (!/cpf/i.test(chave)) {
+      limpo[chave] = valor;
+      continue;
+    }
+    // Campo de CPF: `cpf` cru nunca passa, e qualquer outro só passa se o que
+    // vier dentro não for um documento inteiro.
+    if (chave.toLowerCase() === 'cpf') continue;
+    if (typeof valor === 'string' && valor.replace(/\D/g, '').length >= 11) continue;
+    limpo[chave] = valor;
+  }
+
+  return limpo;
+}
+
+interface AbandonoDoNavegador {
+  eventId: string;
+  sessionId: string | null;
+  visitorId: string | null;
+  utm: object;
+  params: Record<string, unknown>;
+  page: string | null;
+  referrer: string | null;
+  ip: string;
+  userAgent: string | null;
+  log: Log;
+}
+
+/**
+ * Grava o `checkout_abandoned` que veio do navegador.
+ *
+ * Tem caminho próprio por três motivos que o fluxo genérico não resolve:
+ *
+ * 1. **Deduplicação de negócio.** O `@unique` do `eventId` só barra o mesmo
+ *    disparo repetido, e aqui cada disparo traz um UUID novo: `pagehide` e
+ *    `visibilitychange` acontecem várias vezes na mesma visita — trocar de
+ *    aba, minimizar, voltar. Sem esta trava uma pessoa só viraria quatro
+ *    abandonos, e o número do dashboard deixaria de significar gente. A chave
+ *    é a sessão; sem sessão, o visitante. Sem nenhum dos dois não há como
+ *    agrupar, e aí grava: perder o abandono é pior do que contar um a mais.
+ * 2. **Vínculo com o lead.** O e-mail que a pessoa já tinha digitado chega no
+ *    `params`; achando o `Lead`, o payload do backoffice ganha o bloco
+ *    `lead` em vez de um evento anônimo.
+ * 3. **Nada vai para as APIs de conversão.** `checkout_abandoned` não tem
+ *    equivalente na Meta, então `forwardEvent` só devolveria
+ *    `sem_evento_equivalente`. Quem consome este evento é o webhook de saída.
+ */
+async function registrarCheckoutAbandonado(entrada: AbandonoDoNavegador): Promise<void> {
+  const { eventId, sessionId, visitorId, params, log } = entrada;
+
+  const chave = sessionId ? { sessionId } : visitorId ? { visitorId } : null;
+  if (chave) {
+    const jaRegistrado = await prisma.funnelEvent.findFirst({
+      where: { event: 'checkout_abandoned', ...chave },
+      select: { id: true },
+    });
+    if (jaRegistrado) return;
+  }
+
+  const email = typeof params.email === 'string' ? params.email.toLowerCase().trim() : '';
+  const lead = email
+    ? await prisma.lead.findFirst({ where: { email }, orderBy: { createdAt: 'desc' }, select: { id: true } })
+    : null;
+
+  const { count } = await prisma.funnelEvent.createMany({
+    skipDuplicates: true,
+    data: [
+      {
+        eventId,
+        event: 'checkout_abandoned',
+        sessionId,
+        visitorId,
+        leadId: lead?.id ?? null,
+        utm: entrada.utm,
+        params: params as object,
+        page: entrada.page,
+        referrer: entrada.referrer,
+        ip: entrada.ip,
+        userAgent: entrada.userAgent,
+      },
+    ],
+  });
+
+  // Reenvio do mesmo `event_id`: já está gravado e já foi encaminhado.
+  if (count === 0) return;
+
+  /* O `createMany` não devolve id, e o id interno é o que traz o bloco
+     `site` (IP, user-agent, página, sessão, params) para o corpo do webhook.
+     A leitura extra sai caro em lugar nenhum: isto roda fora da resposta. */
+  const gravado = await prisma.funnelEvent.findUnique({ where: { eventId }, select: { id: true } });
+  if (!gravado) return;
+
+  dispatchOutbound(
+    'checkout.abandoned',
+    { funnelEventId: gravado.id, ...(lead ? { leadId: lead.id } : {}) },
+    log,
+  ).catch((err) => log.warn({ err, eventId }, 'falha ao enfileirar webhook de saída'));
 }
 
 const trackBody = z.object({
@@ -117,6 +249,32 @@ export const trackRoutes: FastifyPluginAsync = async (app) => {
        */
       const visitorId = readVisitorId(req);
 
+      const params: Record<string, unknown> = {
+        ...semCpfCompleto(body.params ?? {}),
+        ...(body.fbp ? { fbp: body.fbp } : {}),
+        ...(body.fbc ? { fbc: body.fbc } : {}),
+      };
+
+      /* O abandono de checkout tem regra própria de deduplicação e de vínculo
+         com o lead; nada disso cabe no caminho genérico abaixo. Também dispara
+         e esquece — quem está saindo da página não espera por nós. */
+      if (body.event === 'checkout_abandoned') {
+        registrarCheckoutAbandonado({
+          eventId: body.event_id,
+          sessionId: body.session_id ?? null,
+          visitorId,
+          utm: sanitizeUtm(body.utm) as object,
+          params,
+          page: body.page ?? null,
+          referrer: body.referrer?.slice(0, 500) ?? null,
+          ip,
+          userAgent: userAgent ?? null,
+          log: req.log,
+        }).catch((err) => req.log.warn({ err }, 'falha ao registrar checkout abandonado'));
+
+        return reply.code(204).send();
+      }
+
       // Dispara e esquece: a resposta não espera o banco nem a Meta. Quem
       // está comprando não deve pagar o custo do nosso rastreamento.
       /**
@@ -142,11 +300,7 @@ export const trackRoutes: FastifyPluginAsync = async (app) => {
               sessionId: body.session_id ?? null,
               visitorId,
               utm: sanitizeUtm(body.utm) as object,
-              params: {
-                ...(body.params ?? {}),
-                ...(body.fbp ? { fbp: body.fbp } : {}),
-                ...(body.fbc ? { fbc: body.fbc } : {}),
-              } as object,
+              params: params as object,
               page: body.page ?? null,
               referrer: body.referrer?.slice(0, 500) ?? null,
               ip,

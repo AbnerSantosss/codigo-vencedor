@@ -1,3 +1,12 @@
+# Stack de produção — Portainer (repositório Git) + Cloudflare Tunnel.
+#
+# Nenhuma porta é publicada no host: a VPS já roda outras stacks e não há
+# disputa por porta. Quem alcança a aplicação é o `cloudflared`, pela rede
+# interna desta stack. O banco nunca sai dela.
+#
+# As variáveis ficam na aba "Environment variables" da stack no Portainer —
+# nunca neste arquivo, que é público.
+
 services:
   db:
     image: postgres:16-alpine
@@ -8,6 +17,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-codigovencedor}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks: [interna]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor}"]
       interval: 10s
@@ -31,11 +41,23 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?defina ENCRYPTION_KEY}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Atrás do túnel, sem isto o rate limit enxerga só o IP do cloudflared.
       TRUST_CLOUDFLARE: ${TRUST_CLOUDFLARE:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      # Só no loopback do host: quem expõe para a internet é o túnel.
-      - "127.0.0.1:3000:3000"
+    networks: [interna]
+    # Sem "ports": quem publica para a internet é o túnel, não o host.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on: [api]
+    # O token carrega a configuração do túnel criada no painel Zero Trust.
+    # No painel, o Public Hostname aponta para http://api:3000 — nome do
+    # serviço nesta mesma rede, não IP nem porta do host.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?defina CLOUDFLARE_TUNNEL_TOKEN}
+    networks: [interna]
 
   backup:
     image: postgres:16-alpine
@@ -46,7 +68,10 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - ./backups:/backups
+      # Caminho absoluto no host, fora do clone do repositório: o Portainer
+      # reclona o diretório da stack a cada redeploy e levaria os dumps junto.
+      - ${BACKUP_DIR:-/opt/codigo-vencedor/backups}:/backups
+    networks: [interna]
     entrypoint: >
       sh -c 'while true; do
         pg_dump -h db -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor}
@@ -57,3 +82,8 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  # O Portainer prefixa com o nome da stack, então não colide com as redes
+  # das outras stacks da VPS.
+  interna:
