@@ -1,0 +1,78 @@
+# Stack de produção para o servidor que roda o Portainer (proxserverabner).
+#
+# Diferença para o docker-compose.yml: neste host o `cloudflared` já roda no
+# próprio servidor (systemd/host), servindo todas as outras aplicações — por
+# isso não há contêiner de túnel aqui. A api publica a porta apenas em
+# 127.0.0.1:3100 e o túnel do host aponta o hostname para http://localhost:3100.
+#
+# As variáveis ficam na aba "Environment variables" da stack no Portainer,
+# nunca neste arquivo, que é público.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-codigovencedor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-codigovencedor}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [interna]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-codigovencedor}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-codigovencedor}
+      PUBLIC_URL: ${PUBLIC_URL:?defina PUBLIC_URL}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?defina ENCRYPTION_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Atrás do túnel, sem isto o rate limit enxerga só o IP do cloudflared.
+      TRUST_CLOUDFLARE: ${TRUST_CLOUDFLARE:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      # Só o loopback do host: quem publica para a internet é o cloudflared
+      # do próprio servidor, que alcança http://localhost:3100.
+      - "127.0.0.1:${APP_PORT:-3100}:3000"
+    networks: [interna]
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ${BACKUP_DIR:-/opt/codigo-vencedor/backups}:/backups
+    networks: [interna]
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          pg_dump -h db -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor} | gzip > /backups/cv-$$(date +%Y%m%d-%H%M).sql.gz
+          find /backups -name "cv-*.sql.gz" -mtime +14 -delete
+          sleep 86400
+        done
+
+volumes:
+  pgdata:
+
+networks:
+  interna:
