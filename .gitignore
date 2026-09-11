@@ -12,6 +12,7 @@ panel/dist/
 _backup-original/
 landing-demo-antigravity/
 scratch/
+tmp/
 
 # Rede de segurança para repositório público: nada de chave, certificado ou
 # credencial pode entrar aqui, nem por acidente nem por ferramenta externa.
@@ -33,3 +34,6 @@ secrets/
 .DS_Store
 Thumbs.db
 desktop.ini
+dist-seed/
+__pycache__/
+*.pyc

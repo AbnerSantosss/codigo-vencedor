@@ -15,6 +15,10 @@ COPY src ./src
 # de desenvolvimento, só o bundle estático de `panel/dist`.
 COPY panel ./panel
 RUN npx prisma generate && npm run build
+# Seed idempotente (SiteConfig + primeiro admin) compilado para rodar na
+# imagem final, que não tem tsx.
+COPY tsconfig.seed.json ./
+RUN npx tsc -p tsconfig.seed.json
 
 # ---------- runtime ----------
 FROM node:24-alpine AS runtime
@@ -28,6 +32,7 @@ COPY prisma ./prisma
 RUN npm ci --omit=dev && npx prisma generate && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/dist-seed ./dist-seed
 COPY --from=build /app/panel/dist ./panel/dist
 COPY public ./public
 # Painel anterior (vanilla), servido em /admin-legacy como rede de segurança
@@ -42,4 +47,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 # tini garante que SIGTERM chegue ao Node (encerramento limpo no redeploy).
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist-seed/prisma/seed.js && node dist/server.js"]

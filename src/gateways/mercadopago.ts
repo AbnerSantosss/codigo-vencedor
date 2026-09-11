@@ -118,7 +118,7 @@ export const mercadoPagoGateway: PaymentGateway = {
 
     const body = {
       transaction_amount: Number((order.amountCents / 100).toFixed(2)),
-      description: 'Curso Código Vencedor + App',
+      description: 'Código Vencedor + App',
       payment_method_id: 'pix',
       external_reference: order.reference,
       date_of_expiration: formatarExpiracaoMp(expiresAt),

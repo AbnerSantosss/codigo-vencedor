@@ -197,16 +197,9 @@
           if (!order || order.status !== 'paid') { confirmationMessage(order && order.status === 'pending' ? 'Seu pagamento ainda está aguardando confirmação.' : 'Não foi possível confirmar este pagamento. Consulte o link do seu pedido.'); return; }
           $('[data-cv-confirmation-status]').hidden = true;
           $('[data-cv-confirmed]').hidden = false;
-          if (order.accessUrl) {
-            try {
-              var loginUrl = new URL(order.accessUrl);
-              if (loginUrl.protocol === 'https:' || loginUrl.protocol === 'http:') {
-                $('[data-cv-login]').href = loginUrl.href;
-                $('[data-cv-login]').hidden = false;
-                $('[data-cv-login-note]').textContent = 'Entre com os dados enviados para o seu e-mail.';
-              }
-            } catch (e) { /* Link ausente ou invalido: conserva orientacao por e-mail. */ }
-          }
+          $('[data-cv-login]').href = 'https://app.codigovencedor.com/login';
+          $('[data-cv-login]').hidden = false;
+          $('[data-cv-login-note]').textContent = 'Entre com os dados enviados para o seu e-mail.';
 
           $('[data-cv-order]').textContent = order.reference || publicId.slice(0, 8).toUpperCase();
           $('[data-cv-amount]').textContent = brl(order.amountCents);
@@ -226,7 +219,7 @@
             transaction_id: order.reference || publicId,
             value: order.amountCents / 100,
             currency: order.currency || 'BRL',
-            items: [{ item_name: 'Curso Código Vencedor + App', price: order.amountCents / 100, quantity: 1 }]
+            items: [{ item_name: 'Código Vencedor + App', price: order.amountCents / 100, quantity: 1 }]
           });
 
           /* A venda ia só para o GTM: existia para a Meta e não existia na

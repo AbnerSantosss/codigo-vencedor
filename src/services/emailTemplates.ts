@@ -52,7 +52,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, EmailTemplate> = {
       'Valor: {{valor}}\n' +
       'Login: {{email}}\n\n' +
       'Entre por aqui: {{link_acesso}}\n\n' +
-      'Comece pelo curso — ele explica a conta que a ferramenta faz. Depois abra o app e use as 8 ferramentas com calma.\n\n' +
+      'Comece pelo Código — ele explica a conta que a ferramenta faz. Depois abra o app e use as 8 ferramentas com calma.\n\n' +
       'Qualquer dúvida, é só responder este e-mail ou chamar no WhatsApp: {{suporte}}',
   },
 
@@ -62,7 +62,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, EmailTemplate> = {
       'Oi, {{nome}}.\n\n' +
       'Vi que você começou a garantir o Código Vencedor e parou no meio. Acontece — mas o valor de {{valor}} continua valendo, e o acesso é liberado em segundos depois do Pix.\n\n' +
       'Para continuar de onde parou: {{link_checkout}}\n\n' +
-      'O que você recebe: o curso completo, a calculadora esportiva e 1 mês de acesso ao app com as 8 ferramentas. E 7 dias de garantia — se não for para você, devolvemos.\n\n' +
+      'O que você recebe: o Código completo, a calculadora esportiva e 1 mês de acesso ao app com as 8 ferramentas. E 7 dias de garantia — se não for para você, devolvemos.\n\n' +
       'Se ficou alguma dúvida antes de decidir, responde este e-mail ou chama no WhatsApp: {{suporte}}',
   },
 

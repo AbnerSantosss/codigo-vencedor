@@ -383,6 +383,7 @@
 
     var open = false;
     var modal = null, video = null, bar = null, raf = 0, lastFocus = null, marks = {};
+    var isMobileVsl = false;
 
     function paint() {
       if (!video || !bar) return;
@@ -442,6 +443,7 @@
       bar = $('[data-cv-vsl-bar]', modal);
 
       var mobile = window.matchMedia('(max-width: 47.99em)').matches;
+      isMobileVsl = mobile;
       video = document.createElement('video');
       video.src = mobile ? '/assets/video-lp-480p.mp4' : '/assets/video-lp-720p.mp4';
       video.poster = mobile ? '/assets/video-lp-poster-480.jpg' : '/assets/video-lp-poster.jpg';
@@ -463,6 +465,11 @@
       soundBtn.addEventListener('click', function () {
         video.muted = !video.muted;
         soundLabel.textContent = video.muted ? 'Ativar o som' : 'Silenciar';
+      });
+
+      video.addEventListener('timeupdate', function () {
+        if (!isMobileVsl || !modal) return;
+        if (video.currentTime >= 6) modal.classList.add('cv-vsl-cta-hidden');
       });
 
       /* O escudo cobre o vídeo só para engolir o duplo-toque que, no iOS,
@@ -620,24 +627,24 @@
      mostrar a conta já resolvida.
      --------------------------------------------------------------------- */
   var AS_VALUES = {
-    safePct:      { v: 8.86,   f: 'pct' },
-    somaInversa:  { v: 91.86,  f: 'pct' },
-    retornoMin:   { v: 108.86, f: 'brl' },
-    lucro:        { v: 8.86,   f: 'brl' },
-    odd1:         { v: 4.34,   f: 'num' },
-    odd2:         { v: 4.44,   f: 'num' },
-    odd3:         { v: 2.16,   f: 'num' },
-    ap1:          { v: 25.08,  f: 'brl' },
-    ap2:          { v: 24.52,  f: 'brl' },
-    ap3:          { v: 50.40,  f: 'brl' },
-    p1:           { v: 25.1,   f: 'paren' },
-    p2:           { v: 24.5,   f: 'paren' },
-    p3:           { v: 50.4,   f: 'paren' },
-    r1:           { v: 108.85, f: 'brl' },
-    r2:           { v: 108.87, f: 'brl' },
-    r3:           { v: 108.86, f: 'brl' },
+    safePct:      { v: 12.32,  f: 'pct' },
+    somaInversa:  { v: 89.03,  f: 'pct' },
+    retornoMin:   { v: 112.32, f: 'brl' },
+    lucro:        { v: 12.32,  f: 'brl' },
+    odd1:         { v: 4.55,   f: 'num' },
+    odd2:         { v: 4.63,   f: 'num' },
+    odd3:         { v: 2.20,   f: 'num' },
+    ap1:          { v: 24.69,  f: 'brl' },
+    ap2:          { v: 24.26,  f: 'brl' },
+    ap3:          { v: 51.05,  f: 'brl' },
+    p1:           { v: 24.7,   f: 'paren' },
+    p2:           { v: 24.3,   f: 'paren' },
+    p3:           { v: 51.0,   f: 'paren' },
+    r1:           { v: 112.34, f: 'brl' },
+    r2:           { v: 112.32, f: 'brl' },
+    r3:           { v: 112.31, f: 'brl' },
     totalAposta:  { v: 100,    f: 'brl' },
-    totalRetorno: { v: 108.86, f: 'approx' }
+    totalRetorno: { v: 112.32, f: 'approx' }
   };
 
   function asFormat(kind, value) {
@@ -724,6 +731,60 @@
     var box = $('[data-cv-bonus]');
     if (!box || !form) return function () {};
     var shown = false;
+    var expired = false;
+    var bonusDeadline = 0;
+    var bonusTimer = null;
+    /* v2 inicia uma nova janela para a oferta cuja copy foi atualizada. */
+    var storageKey = 'cv_bankroll_bonus_deadline_v2';
+    var clock = $('[data-cv-bonus-clock]', box);
+    var status = $('[data-cv-bonus-status]', box);
+    var expiryLabel = $('[data-cv-bonus-expiry-label]', box);
+    var note = $('[data-cv-bonus-note]', box);
+
+    function readDeadline(value) {
+      var parsed = Number(value);
+      return isFinite(parsed) && parsed > 0 ? parsed : 0;
+    }
+
+    function syncDeadline() {
+      try {
+        var stored = readDeadline(localStorage.getItem(storageKey));
+        if (stored) bonusDeadline = bonusDeadline ? Math.min(bonusDeadline, stored) : stored;
+      } catch (e) { /* Armazenamento indisponível: mantém o prazo em memória. */ }
+    }
+
+    function tickBonus() {
+      if (!shown) return;
+      var remaining = Math.max(0, bonusDeadline - Date.now());
+      var value = fmt(Math.ceil(remaining / 1000) * 1000);
+      if (clock && clock.textContent !== value) clock.textContent = value;
+      if (remaining > 0 || expired) return;
+      expired = true;
+      clearInterval(bonusTimer);
+      bonusTimer = null;
+      /* Este prazo controla a apresentação da oferta no checkout. A entrega
+         atual não possui elegibilidade de bônus no servidor; não bloqueia a
+         compra nem revoga acesso à plataforma. */
+      box.classList.add('cv-bonus-unlock--expired');
+      if (status) status.textContent = 'Prazo encerrado';
+      if (expiryLabel) expiryLabel.textContent = 'Tempo esgotado';
+      if (note) {
+        note.textContent = 'O prazo desta oferta de bônus terminou.';
+        note.hidden = false;
+      }
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (!shown || document.visibilityState !== 'visible') return;
+      syncDeadline();
+      tickBonus();
+    });
+    window.addEventListener('storage', function (ev) {
+      if (!shown || ev.key !== storageKey) return;
+      var stored = readDeadline(ev.newValue);
+      if (stored) bonusDeadline = Math.min(bonusDeadline, stored);
+      tickBonus();
+    });
 
     return function () {
       if (shown) return;
@@ -731,8 +792,15 @@
       var email = form.elements.email.value.trim();
       if (nome.split(/\s+/).length < 2 || !validEmail(email)) return;
       shown = true;
+      syncDeadline();
+      if (!bonusDeadline) {
+        bonusDeadline = Date.now() + 10 * 60000;
+        try { localStorage.setItem(storageKey, String(bonusDeadline)); } catch (e) { /* Mantém o prazo em memória. */ }
+      }
       box.hidden = false;
-      track('select_promotion', { promotion_name: 'bonus_calculadora' });
+      tickBonus();
+      if (!expired) bonusTimer = setInterval(tickBonus, 1000);
+      track('select_promotion', { promotion_name: 'bonus_gestao_banca' });
     };
   }
 

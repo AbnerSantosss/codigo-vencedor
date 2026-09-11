@@ -7,3 +7,4 @@ dist
 backups
 *.log
 panel/dist
+dist-seed

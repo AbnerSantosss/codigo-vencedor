@@ -504,7 +504,7 @@ export const DEFAULT_CONFIG: SiteConfigData = {
     priceCents: 2790,
     priceFromCents: 27390,
     currency: 'BRL',
-    productName: 'Curso Código Vencedor + App',
+    productName: 'Código Vencedor + App',
     videoEnabled: true,
   },
   theme: DEFAULT_THEME,

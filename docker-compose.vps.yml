@@ -1,0 +1,12 @@
+# Override para VPS com nginx no próprio host (sem Cloudflare Tunnel).
+# Uso: docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d --build
+#
+# - `api` passa a escutar SÓ em 127.0.0.1:3100 do host; o nginx faz o proxy.
+# - `cloudflared` fica desligado (perfil "tunnel"): ligue com --profile tunnel
+#   quando houver token do túnel.
+services:
+  api:
+    ports:
+      - "127.0.0.1:3100:3000"
+  cloudflared:
+    profiles: ["tunnel"]

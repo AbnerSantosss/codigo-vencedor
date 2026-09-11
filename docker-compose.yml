@@ -72,13 +72,18 @@ services:
       # reclona o diretório da stack a cada redeploy e levaria os dumps junto.
       - ${BACKUP_DIR:-/opt/codigo-vencedor/backups}:/backups
     networks: [interna]
-    entrypoint: >
-      sh -c 'while true; do
-        pg_dump -h db -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor}
-          | gzip > /backups/cv-$$(date +%Y%m%d-%H%M).sql.gz;
-        find /backups -name "cv-*.sql.gz" -mtime +14 -delete;
-        sleep 86400;
-      done'
+    # Uma linha por comando: num escalar dobrado (>) do YAML, linha mais
+    # indentada preserva a quebra, e "| gzip" numa linha própria vira
+    # erro de sintaxe no sh.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          pg_dump -h db -U ${POSTGRES_USER:-codigovencedor} -d ${POSTGRES_DB:-codigovencedor} | gzip > /backups/cv-$$(date +%Y%m%d-%H%M).sql.gz
+          find /backups -name "cv-*.sql.gz" -mtime +14 -delete
+          sleep 86400
+        done
 
 volumes:
   pgdata:
