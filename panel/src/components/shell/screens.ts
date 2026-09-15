@@ -1,6 +1,8 @@
 import {
   Activity,
   CreditCard,
+  MousePointerClick,
+  Ticket,
   FileText,
   Flame,
   LayoutDashboard,
@@ -76,6 +78,22 @@ export const TELAS: Tela[] = [
     icone: Activity,
     titulo: 'Eventos',
     sub: 'O que acontece no site: funil, origem do tráfego e os últimos disparos.',
+  },
+  {
+    id: 'cliques',
+    label: 'Cliques',
+    grupo: 'Vendas',
+    icone: MousePointerClick,
+    titulo: 'Cliques',
+    sub: 'Em que botão, em que parte da página e em que rota as pessoas clicaram.',
+  },
+  {
+    id: 'cupons',
+    label: 'Cupons',
+    grupo: 'Vendas',
+    icone: Ticket,
+    titulo: 'Cupons de desconto',
+    sub: 'O cliente digita o código no checkout; o desconto sai daqui. Nenhum cupom baixa do mínimo do Pix.',
   },
   {
     id: 'conteudo',

@@ -130,6 +130,42 @@ export const checkoutSchema = z.object({
   externalUrl: z.union([z.string().url(), z.literal('')]),
   buttonLabel: z.string().max(60),
   openInNewTab: z.boolean(),
+
+  /**
+   * Libera o botão "Simular pagamento aprovado" da compra de teste.
+   *
+   * **Padrão desligado, e isso é uma correção de segurança, não uma
+   * preferência.** Enquanto não houver chave Pix nem gateway configurado, a
+   * cobrança nasce marcada como simulada e a rota
+   * `POST /api/orders/:publicId/simulate-payment` aceita qualquer visitante
+   * que tenha o `publicId` do próprio pedido — e ela marca `paid`, manda o
+   * e-mail de acesso, dispara o `Purchase` na CAPI e os webhooks de saída,
+   * exatamente como uma venda de verdade. Ou seja: uma loja recém-instalada
+   * distribuía acesso de graça para quem chegasse ao checkout.
+   *
+   * Com a flag desligada a rota responde 404 e a página nem mostra o aviso de
+   * Pix simulado. Para testar o fluxo inteiro, o dono liga aqui, testa, e
+   * desliga. Para testar com gateway real, o caminho é um cupom (que cobra o
+   * mínimo do Pix de verdade) — ver `services/coupons.ts`.
+   */
+  simulatedPaymentEnabled: z.boolean(),
+
+  /** Aceitar cupom de desconto no checkout embutido. */
+  couponsEnabled: z.boolean(),
+
+  /**
+   * Piso do valor cobrado, em centavos, depois de aplicado o cupom.
+   *
+   * Um cupom de 100% não pode gerar cobrança de R$ 0,00: Pix com valor zero
+   * não existe para gateway nenhum, e o pedido nasceria impossível de pagar
+   * (ficaria `pending` para sempre, e a régua de recuperação ainda mandaria
+   * e-mail cobrando). O valor cai até aqui e para.
+   *
+   * O padrão de R$ 1,00 é o piso do próprio schema de preço. Mercado Pago e
+   * Appmax podem ter mínimo maior — por isso é editável no painel em vez de
+   * constante no código.
+   */
+  pixMinCents: z.number().int().min(100).max(100_000),
 });
 
 /* ------------------------------------------------------------------ *
@@ -524,6 +560,9 @@ export const DEFAULT_CONFIG: SiteConfigData = {
     externalUrl: '',
     buttonLabel: 'Quero garantir minha vaga',
     openInNewTab: false,
+    simulatedPaymentEnabled: false,
+    couponsEnabled: false,
+    pixMinCents: 100,
   },
   tracking: {
     gtmId: '',
@@ -677,7 +716,20 @@ export interface PublicConfig {
    * dentro do GTM, e a medição do funil não passa por nenhum dos dois.
    */
   tracking: { gtmId: string; gtmIds: string[] };
-  checkout: { mode: string; externalUrl: string; buttonLabel: string; openInNewTab: boolean; pollMs: number };
+  /**
+   * `couponsEnabled` é o único campo novo que a LP precisa: sem ele a página
+   * teria de tentar aplicar um cupom para descobrir que a loja não aceita
+   * cupom. O valor mínimo e o resto das regras NÃO saem daqui — quem calcula
+   * desconto é o servidor, e o navegador só exibe o que ele devolveu.
+   */
+  checkout: {
+    mode: string;
+    externalUrl: string;
+    buttonLabel: string;
+    openInNewTab: boolean;
+    couponsEnabled: boolean;
+    pollMs: number;
+  };
 }
 
 export async function getPublicConfig(live: { spots?: number; buyers?: number } = {}): Promise<PublicConfig> {
@@ -730,6 +782,7 @@ export async function getPublicConfig(live: { spots?: number; buyers?: number } 
       externalUrl: cfg.checkout.externalUrl,
       buttonLabel: cfg.checkout.buttonLabel,
       openInNewTab: cfg.checkout.openInNewTab,
+      couponsEnabled: cfg.checkout.couponsEnabled,
       pollMs: 4000,
     },
   };

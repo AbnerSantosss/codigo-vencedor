@@ -9,6 +9,7 @@ import { getSiteConfig } from '../services/config.js';
 import { maskEmail } from '../services/crypto.js';
 import { upsertDraftLead } from '../services/recovery.js';
 import { confirmarPagamento } from '../services/payments.js';
+import { validarCupom, MENSAGEM_DE_ERRO } from '../services/coupons.js';
 import { readVisitorId } from '../lib/visitor.js';
 import { sanitizeUtm } from '../lib/attribution.js';
 
@@ -22,6 +23,12 @@ const checkoutBody = z.object({
   event_id: z.string().max(64).optional(),
   fbp: z.string().max(120).optional(),
   fbc: z.string().max(200).optional(),
+  /**
+   * Só o código digitado. O desconto **não** vem do navegador — o servidor
+   * lê o cupom no banco e refaz a conta. Aceitar valor daqui seria aceitar o
+   * preço que o comprador escolher.
+   */
+  cupom: z.string().trim().max(40).optional(),
 });
 
 const draftBody = z.object({
@@ -76,6 +83,48 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * Confere um cupom e devolve o preço resultante, sem criar nada.
+   *
+   * É o que responde ao botão "Aplicar" do campo de cupom. Não gasta uso, não
+   * grava lead e não cria pedido: quem gasta o cupom é a criação do checkout,
+   * que reconfere tudo. Conferir aqui e gastar aqui esgotaria um cupom de uso
+   * único só de alguém digitar e desistir.
+   *
+   * O corpo devolve os valores já calculados pelo servidor (cheio, desconto,
+   * a pagar). A página **exibe** esses números; ela não os recalcula, e muito
+   * menos os envia de volta — o preço da venda sai do banco, sempre.
+   *
+   * Rate limit apertado porque é uma rota pública que consulta o banco por
+   * código: 20 por minuto dá conforto para quem erra o cupom e não dá para
+   * quem quiser descobrir cupons por tentativa e erro.
+   */
+  app.post('/api/checkout/coupon', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const parsed = z.object({ cupom: z.string().trim().min(1).max(40) }).safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ ok: false, erro: 'nao_encontrado', message: MENSAGEM_DE_ERRO.nao_encontrado });
+    }
+
+    const r = await validarCupom(parsed.data.cupom);
+    if (!r.ok) {
+      /* 200 com `ok: false`, e não 4xx: cupom errado é resposta normal de um
+         formulário, não falha de requisição. A LP trata os dois casos no
+         mesmo lugar e o rastreamento distingue pelo campo `erro`. */
+      return reply.send({ ok: false, erro: r.erro, message: MENSAGEM_DE_ERRO[r.erro] });
+    }
+
+    return reply.send({
+      ok: true,
+      code: r.cupom.code,
+      kind: r.cupom.kind,
+      value: r.cupom.value,
+      listAmountCents: r.cupom.listAmountCents,
+      discountCents: r.cupom.discountCents,
+      amountCents: r.cupom.amountCents,
+      limitadoPeloMinimo: r.cupom.limitadoPeloMinimo,
+    });
+  });
+
+  /**
    * Cria o pedido e devolve o Pix.
    *
    * Rate limit apertado: gerar cobrança escreve em três tabelas e chama o
@@ -127,6 +176,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           /* Só para o `pix.created` achar o evento do navegador e levar o
              bloco `site` no webhook. Ver `createCheckout`. */
           eventId: body.event_id,
+          cupom: body.cupom,
         },
         req.log,
       );
@@ -162,7 +212,14 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
        */
       const { orderId: _orderId, leadId: _leadId, ...publico } = result;
 
-      return reply.send(publico);
+      /**
+       * `simulated` só sai quando o pagamento simulado está ligado no painel.
+       *
+       * É esse campo que faz a LP mostrar o aviso e o botão "já paguei" da
+       * compra de teste. Com a trava desligada, a rota de simulação responde
+       * 404 — anunciar o botão seria oferecer um caminho que não existe.
+       */
+      return reply.send({ ...publico, simulated: publico.simulated && cfg.checkout.simulatedPaymentEnabled });
     } catch (err) {
       req.log.error({ err }, 'falha ao criar cobrança');
       return reply.code(502).send({ error: 'gateway_indisponivel' });
@@ -185,6 +242,9 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         status: true,
         reference: true,
         amountCents: true,
+        listAmountCents: true,
+        discountCents: true,
+        couponCode: true,
         currency: true,
         paidAt: true,
         expiresAt: true,
@@ -196,22 +256,31 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
 
     if (!order) return reply.code(404).send({ error: 'not_found' });
 
+    /* A configuração é lida antes do desvio porque o `simulated` do bloco
+       comum já depende da trava do painel. Ver a rota de simulação abaixo. */
+    const cfg = await getSiteConfig();
+
     const base = {
       status: order.status,
       reference: order.reference,
       expiresAt: order.expiresAt?.toISOString() ?? null,
-      simulated: isSimulatedCharge(order.pixCharge?.raw),
+      simulated: isSimulatedCharge(order.pixCharge?.raw) && cfg.checkout.simulatedPaymentEnabled,
     };
 
     // Dados do comprador só saem depois do pagamento confirmado, e mesmo
     // assim mascarados: esta rota é pública.
     if (order.status !== 'paid') return reply.send(base);
 
-    const cfg = await getSiteConfig();
     return reply.send({
       ...base,
       accessUrl: /^https?:\/\//i.test(cfg.email.accessUrl) ? cfg.email.accessUrl : null,
       amountCents: order.amountCents,
+      /* A página de obrigado mostra "de R$ 27,90 por R$ 24,90 com CUPOM10".
+         Sem estes três campos ela só saberia o valor cobrado, e o desconto
+         desapareceria exatamente na tela em que a pessoa quer vê-lo. */
+      listAmountCents: order.listAmountCents ?? order.amountCents,
+      discountCents: order.discountCents,
+      couponCode: order.couponCode,
       currency: order.currency,
       paidAt: order.paidAt?.toISOString() ?? null,
       purchaseEventId: order.purchaseEventId,
@@ -230,6 +299,16 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
    * simulada quando não há chave Pix cadastrada. Ou seja: no momento em que a
    * chave real entra, esta rota deixa de existir na prática. Um pedido de
    * verdade nunca pode ser marcado como pago por aqui.
+   *
+   * **Além disso, exige a trava do painel.** "Cobrança simulada" não é a
+   * mesma coisa que "qualquer visitante pode se dar um pedido pago": esta
+   * rota chama o mesmo `confirmarPagamento` do webhook do gateway, ou seja,
+   * manda o e-mail de acesso, dispara a Conversions API e os webhooks de
+   * saída como se fosse venda. Numa instalação nova, sem gateway configurado,
+   * toda cobrança nasce simulada — e sem a trava bastaria conhecer o
+   * `publicId` do próprio pedido para liberar o produto e sujar o relatório.
+   * Por isso o padrão de `checkout.simulatedPaymentEnabled` é **desligado**,
+   * e o dono liga só enquanto está testando.
    */
   app.post(
     '/api/orders/:publicId/simulate-payment',
@@ -237,6 +316,18 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
     async (req, reply) => {
       const params = z.object({ publicId: z.string().uuid() }).safeParse(req.params);
       if (!params.success) return reply.code(404).send({ error: 'not_found' });
+
+      /* 404 e não 403: com a trava desligada a rota simplesmente não existe,
+         e responder "proibido" contaria a quem estiver sondando que existe
+         um caminho para marcar pedido como pago. */
+      const cfg = await getSiteConfig();
+      if (!cfg.checkout.simulatedPaymentEnabled) {
+        req.log.warn(
+          { publicId: params.data.publicId },
+          'tentativa de pagamento simulado com a trava desligada',
+        );
+        return reply.code(404).send({ error: 'not_found' });
+      }
 
       const order = await prisma.order.findUnique({
         where: { publicId: params.data.publicId },

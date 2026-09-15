@@ -3,6 +3,7 @@ import { prisma } from '../db.js';
 import { resolveGateway } from '../gateways/index.js';
 import { getSiteConfig } from './config.js';
 import { encrypt } from './crypto.js';
+import { validarCupom, consumirCupom, devolverCupom, normalizarCodigo } from './coupons.js';
 import { newReference } from '../lib/cpf.js';
 import { firstTouchDoVisitante } from '../lib/attribution.js';
 import { dispatchOutbound } from './outbound.js';
@@ -38,6 +39,16 @@ export interface CheckoutInput {
    * dele.
    */
   eventId?: string;
+  /**
+   * Código de cupom digitado pela pessoa, cru, do jeito que veio do campo.
+   *
+   * O valor do desconto **não** vem daqui — vem do banco. A página manda o
+   * código; quem calcula o preço é o servidor. Um cupom inválido no momento
+   * da compra (desativado, expirado ou esgotado entre o "Aplicar" e o "Gerar
+   * Pix") não derruba a venda: o pedido sai pelo preço cheio e o motivo volta
+   * em `couponError`.
+   */
+  cupom?: string;
 }
 
 export interface CheckoutResult {
@@ -48,7 +59,20 @@ export interface CheckoutResult {
   leadId: string;
   orderPublicId: string;
   reference: string;
+  /** O que vai ser cobrado de fato — já com o cupom abatido, se houver. */
   amountCents: number;
+  /** Preço cheio. Igual a `amountCents` quando não houve cupom. */
+  listAmountCents: number;
+  /** Quanto o cupom abateu. Zero quando não houve cupom. */
+  discountCents: number;
+  /** Código do cupom que valeu, normalizado. `null` quando não houve. */
+  couponCode: string | null;
+  /**
+   * Motivo de o cupom digitado não ter sido aplicado, quando foi o caso. A LP
+   * usa para avisar "o cupom expirou, o pedido saiu pelo preço cheio" em vez
+   * de a pessoa descobrir sozinha na hora de pagar.
+   */
+  couponError: string | null;
   emv: string;
   qrCodeBase64: string | null;
   expiresAt: string;
@@ -165,11 +189,49 @@ export async function createCheckout(input: CheckoutInput, log: Log = SEM_LOG): 
 
   const reference = await uniqueReference();
 
+  /**
+   * Cupom: confere e **gasta** antes de criar o pedido.
+   *
+   * A ordem importa. Gastar depois de criar deixaria o pedido existindo com
+   * desconto enquanto o uso ainda não foi contado — e duas pessoas usando o
+   * último uso ao mesmo tempo levariam as duas. Gastar antes faz o banco
+   * decidir quem ficou com o uso, e quem perdeu compra pelo preço cheio.
+   *
+   * A reconferência aqui não é redundante com a da rota de pré-visualização:
+   * entre digitar o cupom e apertar "Gerar Pix" passa tempo real, suficiente
+   * para o dono desativar o cupom no painel.
+   */
+  const listAmountCents = cfg.content.priceCents;
+  let amountCents = listAmountCents;
+  let discountCents = 0;
+  let couponCode: string | null = null;
+  let couponError: string | null = null;
+
+  if (input.cupom && input.cupom.trim()) {
+    const conferido = await validarCupom(input.cupom, listAmountCents);
+    if (!conferido.ok) {
+      couponError = conferido.erro;
+      log.info({ cupom: normalizarCodigo(input.cupom), motivo: conferido.erro }, 'cupom recusado no checkout');
+    } else if (await consumirCupom(conferido.cupom.code)) {
+      amountCents = conferido.cupom.amountCents;
+      discountCents = conferido.cupom.discountCents;
+      couponCode = conferido.cupom.code;
+    } else {
+      /* Perdeu a corrida pelo último uso, ou o cupom saiu do ar entre a
+         conferência e o `UPDATE`. Venda segue, sem desconto. */
+      couponError = 'esgotado';
+      log.info({ cupom: conferido.cupom.code }, 'cupom esgotou entre conferir e gastar');
+    }
+  }
+
   const order = await prisma.order.create({
     data: {
       reference,
       leadId: lead.id,
-      amountCents: cfg.content.priceCents,
+      amountCents,
+      listAmountCents,
+      discountCents,
+      couponCode,
       currency: cfg.content.currency,
       status: 'pending',
       provider: cfg.gatewayActive,
@@ -190,19 +252,36 @@ export async function createCheckout(input: CheckoutInput, log: Log = SEM_LOG): 
     },
   });
 
-  const charge = await gateway.createPixCharge({
-    order,
-    customer: {
-      nome: input.nome,
-      email: input.email,
-      cpf: input.cpf,
-      fone: input.fone,
-      // A Appmax exige o IP para criar o cliente; os outros adaptadores
-      // ignoram o campo.
-      ip: input.ip,
-    },
-    expiresInMin: cfg.pixExpiresMin,
-  });
+  /**
+   * Se o gateway recusar, o uso do cupom volta.
+   *
+   * Sem isto, cada tentativa que morre no provedor queimaria um uso de um
+   * cupom limitado — e um cupom de uso único ficaria gasto sem nenhuma venda
+   * existir. O pedido criado acima fica como `pending` e expira sozinho, que
+   * é o comportamento que já havia antes do cupom.
+   */
+  let charge;
+  try {
+    charge = await gateway.createPixCharge({
+      order,
+      customer: {
+        nome: input.nome,
+        email: input.email,
+        cpf: input.cpf,
+        fone: input.fone,
+        // A Appmax exige o IP para criar o cliente; os outros adaptadores
+        // ignoram o campo.
+        ip: input.ip,
+      },
+      expiresInMin: cfg.pixExpiresMin,
+    });
+  } catch (err) {
+    if (couponCode) {
+      await devolverCupom(couponCode).catch(() => undefined);
+      log.warn({ cupom: couponCode, orderId: order.id }, 'uso do cupom devolvido: gateway recusou a cobrança');
+    }
+    throw err;
+  }
 
   await prisma.$transaction([
     prisma.pixCharge.create({
@@ -271,6 +350,10 @@ export async function createCheckout(input: CheckoutInput, log: Log = SEM_LOG): 
     orderPublicId: order.publicId,
     reference: order.reference,
     amountCents: order.amountCents,
+    listAmountCents,
+    discountCents,
+    couponCode,
+    couponError,
     emv: charge.emv,
     qrCodeBase64: charge.qrCodeBase64,
     expiresAt: charge.expiresAt.toISOString(),

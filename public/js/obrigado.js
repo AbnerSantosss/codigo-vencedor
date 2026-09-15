@@ -122,7 +122,16 @@
     } catch (e) { /* rastreamento nunca derruba a confirmação */ }
   }
 
-  sendToServer('page_view', eventId(), {});
+  /* A visita ia so para o servidor. O dataLayer desta pagina ficava sem
+     `page_view`, entao um gatilho de evento personalizado montado no GTM
+     disparava na landing e nao aqui — e a confirmacao, que e onde a venda
+     termina, era a unica rota sem esse evento. Os dois lados saem com o
+     mesmo `event_id`, que e o que permite deduplicar. */
+  (function () {
+    var id = eventId();
+    window.dataLayer.push({ event: 'page_view', event_id: id, page_title: document.title });
+    sendToServer('page_view', id, {});
+  })();
 
   /* O nonce vem do servidor a cada request. Sem ele a CSP bloqueia o gtm.js,
      e o próprio GTM o repassa para as tags que ele injetar depois.
@@ -204,6 +213,17 @@
           $('[data-cv-order]').textContent = order.reference || publicId.slice(0, 8).toUpperCase();
           $('[data-cv-amount]').textContent = brl(order.amountCents);
 
+          /* Com cupom, o "Valor" sozinho engana: a pessoa lembra do preco
+             cheio e o numero menor na confirmacao parece erro. Entao a linha
+             do cupom aparece ao lado, dizendo de onde veio a diferenca.
+             Pedido antigo, de antes dos cupons, nao tem os campos — por isso
+             a checagem e pelo desconto, nao pela existencia da chave. */
+          if (order.couponCode && order.discountCents) {
+            $('[data-cv-coupon-code]').textContent = order.couponCode;
+            $('[data-cv-coupon-off]').textContent = '(-' + brl(order.discountCents) + ' de ' + brl(order.listAmountCents || order.amountCents + order.discountCents) + ')';
+            $('[data-cv-coupon-line]').hidden = false;
+          }
+
           if (order.firstName) {
             $('[data-cv-firstname]').textContent = order.firstName;
             $('[data-cv-firstname-sep]').hidden = false;
@@ -219,6 +239,12 @@
             transaction_id: order.reference || publicId,
             value: order.amountCents / 100,
             currency: order.currency || 'BRL',
+            /* `value` continua sendo o que entrou no caixa, nunca o preco de
+               tabela: contar o desconto como receita inflaria o ROAS da
+               campanha. O cupom viaja como campo separado, para o GTM poder
+               segmentar sem distorcer o numero. */
+            coupon: order.couponCode || undefined,
+            discount: order.discountCents ? order.discountCents / 100 : undefined,
             items: [{ item_name: 'Código Vencedor + App', price: order.amountCents / 100, quantity: 1 }]
           });
 
@@ -240,7 +266,8 @@
             sendToServer('purchase', order.purchaseEventId, {
               transaction_id: order.reference || publicId,
               value: order.amountCents / 100,
-              currency: order.currency || 'BRL'
+              currency: order.currency || 'BRL',
+              coupon: order.couponCode || undefined
             });
           }
         });

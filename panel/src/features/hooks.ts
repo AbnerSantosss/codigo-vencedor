@@ -28,6 +28,12 @@ export const chaves = {
    * o que já está em cache em vez de bater no servidor de novo.
    */
   eventDetail: (id: string) => ['events', 'detail', id] as const,
+  /** Resumo de cliques por botão, seção e página. */
+  clicks: (dias: number) => ['events', 'clicks', dias] as const,
+  /** Linha do tempo de uma pessoa. Chaveada pelo lead, que é o que a rota usa. */
+  journey: (leadId: string) => ['events', 'journey', leadId] as const,
+  coupons: ['coupons'] as const,
+  couponsUsage: (dias: number) => ['coupons', 'usage', dias] as const,
   recovery: (dias: number) => ['recovery', dias] as const,
   metrics: (dias: number) => ['metrics', dias] as const,
   inbound: ['webhooks', 'inbound'] as const,

@@ -744,6 +744,73 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .cv-formerror { margin: 0; color: var(--cv-danger); font-size: var(--fs-small); }
+
+/* --- Cupom de desconto -----------------------------------------------------
+   O bloco so existe na pagina quando o painel liga cupons; por isso ele nasce
+   com [hidden] no HTML e nao tem estado "vazio".
+
+   O campo e o botao dividem a mesma linha no celular porque a alternativa —
+   botao embaixo, largura cheia — empurra o botao de comprar para fora da
+   dobra bem na hora em que a pessoa ja decidiu pagar. */
+.cv-coupon { display: grid; gap: 0.5rem; }
+.cv-coupon[hidden] { display: none; }
+.cv-coupon-label {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--cv-muted);
+}
+.cv-coupon-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.cv-coupon-input {
+  flex: 1 1 auto;
+  /* Sem isso o input de largura minima natural estoura a linha no iPhone SE. */
+  min-width: 0;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.cv-coupon-input::placeholder { letter-spacing: normal; text-transform: none; }
+.cv-btn--coupon {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--cv-border-strong);
+  color: var(--cv-text-2);
+  box-shadow: none;
+  padding: 0 1.125rem;
+  min-block-size: var(--tap);
+  font-size: var(--fs-btn);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 700;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-btn--coupon:hover {
+    background: var(--cv-input);
+    border-color: var(--cv-cta);
+    color: var(--cv-cta);
+    box-shadow: none;
+    transform: none;
+  }
+}
+.cv-btn--coupon:disabled { opacity: .6; cursor: default; }
+.cv-coupon-msg {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--cv-muted);
+}
+.cv-coupon-msg[hidden] { display: none; }
+.cv-coupon-msg--ok { color: var(--cv-cta); }
+.cv-coupon-msg--erro { color: var(--cv-danger); }
+
+/* A linha do cupom no resumo usa o verde de acao, nao o amarelo da marca:
+   o amarelo ja e o preco, e duas linhas amarelas a competir confundem quem
+   so quer conferir quanto vai pagar. */
+.cv-order-row--coupon { color: var(--cv-cta); font-weight: 700; }
+.cv-order-row--coupon[hidden] { display: none; }
+.cv-order-row--coupon b { font-weight: 800; letter-spacing: .04em; }
+
 .cv-btn--submit { margin-top: 0.375rem; padding: 1.125rem 1.5rem; }
 .cv-secure { margin: 0; color: var(--cv-muted-3); font-size: var(--fs-tag); text-align: center; }
 
@@ -1061,6 +1128,18 @@ button { font-family: inherit; cursor: pointer; }
 }
 .cv-thanks-order dt { color: var(--cv-muted-3); font-size: var(--fs-tag); font-weight: 700; letter-spacing: .8px; }
 .cv-thanks-order dd { margin: 4px 0 0; font-size: var(--fs-lead); font-weight: 700; }
+/* Linha do cupom na confirmacao. Aparece so quando houve desconto, por isso
+   nao tem estado vazio; o "de quanto era" fica menor e apagado, porque e
+   contexto, nao o numero que a pessoa veio conferir. */
+.cv-thanks-order [data-cv-coupon-line][hidden] { display: none; }
+.cv-thanks-order [data-cv-coupon-code] { color: var(--cv-cta); letter-spacing: .04em; }
+.cv-thanks-off {
+  display: block;
+  margin-top: 2px;
+  color: var(--cv-muted-3);
+  font-size: var(--fs-tag);
+  font-weight: 600;
+}
 
 /* --------------------------------------------------------------------------
    15. Documentos (termos, privacidade)
@@ -1647,7 +1726,12 @@ button { font-family: inherit; cursor: pointer; }
 .cv-action-cue { text-decoration: none; }
 .cv-as[data-cv-as-card] { scroll-margin-top: 1rem; }
 .cv-action-arrow { display: none; }
+/* No desktop o atalho e o titulo do card; o rotulo de CTA so aparece no
+   celular, onde ele e o unico botao secundario do hero. */
+.cv-action-cue-label--mobile { display: none; }
 @media (max-width: 47.99em) {
+  .cv-action-cue-label--desktop { display: none; }
+  .cv-action-cue-label--mobile { display: inline; }
   .cv-hero-prova .cv-action-title {
     display: flex;
     flex-direction: column;
@@ -1701,8 +1785,27 @@ button { font-family: inherit; cursor: pointer; }
   inset: 0;
   z-index: 90;
   display: grid;
-  place-items: center;
-  padding: 16px;
+  justify-items: center;
+  /* `safe center` e nao `center`: o quadro 16/9 mais a barra e o botao passam
+     da tela em celular deitado e em janela de desktop baixa. Com o centro
+     simples o excedente sai pelos dois lados e o topo do video fica fora de
+     alcance — rolar nao traz de volta, porque `body.cv-locked` congela a
+     pagina atras. Com `safe`, quando nao cabe o alinhamento cai para o inicio
+     e o `overflow-y` devolve a rolagem dentro do proprio modal. Em tela
+     normal nada muda: continua centralizado.
+
+     E `align-content`, nao `align-items`: com uma linha so, a trilha do grid
+     ja e esticada ate a altura do modal, entao o item e centralizado *dentro
+     da trilha* e o `safe` do `align-items` nunca dispara — medido em
+     740x360, o topo da caixa ficava em -49px e o X fora de alcance. O
+     `align-content` alinha a trilha, que e o que precisa recuar. */
+  align-content: safe center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Deitado, o notch come a lateral: o X do canto ficava debaixo dele.
+     O topo leva 12px a mais porque o botao de fechar sobe `-0.75rem` para
+     fora da caixa: sem essa folga ele encosta na borda da tela. */
+  padding: max(28px, calc(env(safe-area-inset-top) + 12px)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   background:
     radial-gradient(circle at 50% 42%, rgba(25, 67, 86, .36), transparent 48%),
     linear-gradient(180deg, rgba(7, 15, 25, .9), rgba(5, 9, 14, .86));
@@ -1801,8 +1904,15 @@ button { font-family: inherit; cursor: pointer; }
 
 @media (max-width: 47.99em) {
   .cv-vsl {
-    padding: .625rem;
-    align-content: center;
+    /* Topo maior que os outros lados porque o X sobe `-0.75rem` para fora da
+       caixa; com .625rem em volta ele encostava na borda da tela. */
+    padding: 1.375rem .625rem .625rem;
+    /* `safe center` e nao `center`: deitado, o quadro 16/9 mais a barra e o
+       botao passam dos 360px de altura, e o centro simples jogava o topo do
+       video para fora de alcance (medido: -49px, com o X inalcancavel).
+       Aqui e `align-content` porque a linha unica do grid ja vem esticada:
+       o `safe` do `align-items` nunca dispara nesse caso. */
+    align-content: safe center;
     background:
       radial-gradient(circle at 50% 38%, rgba(38, 101, 124, .34), transparent 54%),
       linear-gradient(180deg, rgba(8, 19, 31, .92), rgba(7, 12, 18, .88));
@@ -3116,6 +3226,10 @@ body.cv-locked { overflow: hidden; }
 
 /* Hero: comemoracao ao fundo, sem deslocar a posicao original do conteudo. */
 .cv-hero { background: #101b2b; }
+/* O involucro dos dois CTAs so vira caixa no desktop (bloco 49). Aqui ele e
+   transparente: os botoes continuam filhos diretos de `.cv-hero-acao`, entao
+   nenhuma regra de mobile/tablet precisou mudar de seletor. */
+.cv-hero-ctas { display: contents; }
 .cv-hero-acao .cv-hero-more {
   display: flex; width: fit-content; min-height: 3rem; margin: 0 0 1rem;
   background: linear-gradient(135deg, rgba(20, 42, 53, .94), rgba(10, 24, 35, .94));
@@ -3127,10 +3241,6 @@ body.cv-locked { overflow: hidden; }
   opacity: .35;
   transform-box: fill-box;
   transform-origin: center;
-}
-@media (max-width: 47.99em) {
-  .cv-hero-more-arrow-step--1,
-  .cv-hero-more-arrow-step--2 { display: none; }
 }
 @media (min-width: 64em) {
   .cv-hero-acao { display: flex; flex-direction: column; align-items: stretch; }
@@ -3171,7 +3281,12 @@ body.cv-locked { overflow: hidden; }
 }
 @media (max-width: 47.99em) {
   .cv-hero-grid { padding-block: 2rem 3rem; }
-  .cv-hero-acao .cv-hero-more { width: 100%; margin: 1rem 0 0; }
+  /* No celular havia dois convites para a mesma secao, um debaixo do outro:
+     este botao e o atalho animado `.cv-action-cue` logo abaixo. Pedido do
+     dono: fica so o animado, com o rotulo deste. Esconder aqui (e nao remover
+     do HTML) preserva o botao no tablet e no desktop, onde ele e o unico
+     secundario — la o atalho e o titulo do card. */
+  .cv-hero-acao .cv-hero-more { display: none; }
   .cv-hero .cv-hero-benefits { margin-block: 1.75rem 0; }
 }
 .cv-hero-bg { object-position: center top; }
@@ -3547,3 +3662,86 @@ body.cv-pix-active > :not(#oferta) { display: none !important; }
 .cv-tool-meta { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: auto; }
 .cv-tool-token { border-radius: 999px; padding: 3px 9px; background: rgba(245,197,24,.1); color: var(--cv-accent); font-size: var(--fs-micro); font-weight: 700; white-space: nowrap; }
 .cv-tool-popular { color: var(--cv-accent); font-size: var(--fs-micro); font-weight: 800; white-space: nowrap; }
+
+/* --------------------------------------------------------------------------
+   49. Proporcao dos dois CTAs do hero no desktop e no tablet
+
+   O dono, olhando a LP no computador: "o botao de quero conhecer mais esta
+   bem desproporcional". A causa nao era o secundario, era o primario.
+
+   O bloco de 64em do hero poe `.cv-hero-acao` em
+   `display: flex; align-items: stretch`. O `.cv-hero-primary` nao tem largura
+   propria, entao o `stretch` o estica para a **coluna inteira** do grid —
+   620px num container de 1280 e 690px em 1380 — para um rotulo de 26
+   caracteres em 14px. Ao lado dele o secundario fica com `width: fit-content`
+   (~200px) e `align-self: center`: a relacao de largura passa de 3:1 e um
+   parece afundado em relacao ao outro.
+
+   Correcao em tres partes, sem tocar em cor, texto, sombra ou animacao:
+   1. `align-items: flex-start` — ninguem mais e esticado; os tres itens
+      (primario, secundario, nota) alinham pela mesma margem esquerda, que e
+      a mesma da headline acima.
+   2. Larguras explicitas: o primario ganha `width: fit-content` com
+      `min-width` de 20.5rem, o secundario `min-width` de 13rem. A relacao
+      cai para ~1.6:1 — hierarquia, nao desencontro — e para de crescer junto
+      com a tela (em >=82em e >=100em o container abre para 1280/1380px).
+   3. O icone do funil tem 22x25px por causa do mobile, onde o botao e
+      full-width com 15px de texto. Ao lado de 13px no desktop ele pesa mais
+      que o proprio rotulo: cai para 15x17px, com o `gap` de 14px herdado do
+      `.cv-btn` reduzido para 8px.
+
+   A faixa 48em..63.99em nao tinha regra nenhuma: o secundario ficava com os
+   15px do `--fs-btn` e com `margin: 0 0 1rem` (do bloco do hero), isto e, sem
+   respiro nenhum em relacao ao primario logo acima. Ganha a mesma margem de
+   .75rem e o tamanho menor de texto, para a transicao mobile -> desktop
+   deixar de ter um degrau.
+
+   Mobile (<48em) nao e tocado: la os dois continuam full-width empilhados.
+   -------------------------------------------------------------------------- */
+@media (min-width: 48em) and (max-width: 63.99em) {
+  /* Mesma caixa do desktop: nesta faixa os dois botoes tambem ficam lado a
+     lado no eixo vertical, e o secundario, mais estreito, ficava encostado a
+     esquerda do primario em vez de centrado sob ele. */
+  .cv-hero-ctas {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .cv-hero-acao .cv-hero-more {
+    margin: .75rem 0 0;
+    padding: .5rem .875rem;
+    min-height: 2.75rem;
+    font-size: var(--fs-small);
+  }
+}
+@media (min-width: 64em) {
+  .cv-hero-acao { align-items: flex-start; }
+  /* Centralizar o secundario direto no `.cv-hero-acao` o centralizaria em
+     relacao a **coluna do grid** (~580px), nao em relacao ao primario
+     (328px): ele sairia do eixo do botao principal, que e o oposto do
+     pedido. Por isso os dois moram numa caixa propria, que herda a largura
+     que era do primario (`fit-content` com piso de 20.5rem) e centraliza o
+     que estiver dentro. O primario passa a ocupar 100% dessa caixa — o
+     resultado e a mesma largura de antes, porque quem define a caixa e ele. */
+  .cv-hero-ctas {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: fit-content;
+    min-width: min(100%, 20.5rem);
+    max-width: 100%;
+  }
+  .cv-hero-acao .cv-hero-primary {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .cv-hero-acao .cv-hero-more {
+    align-self: center;
+    min-width: min(100%, 13rem);
+    gap: .5rem;
+  }
+  .cv-hero-acao .cv-hero-more .cv-hero-more-arrow svg { width: 15px; height: 17px; }
+}

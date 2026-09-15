@@ -41,7 +41,14 @@ export interface PaymentGateway {
   readonly label: string;
 
   createPixCharge(input: {
-    order: Pick<Order, 'id' | 'publicId' | 'reference' | 'amountCents'>;
+    /**
+     * `amountCents` é sempre o valor a cobrar, já com o cupom abatido — é ele
+     * que vira QR, e nenhum adaptador precisa saber que houve desconto para
+     * funcionar. `listAmountCents` e `discountCents` vêm junto só para os
+     * provedores que sabem representar "de R$ X por R$ Y" no pedido deles (a
+     * Appmax é o caso); quem não sabe, ignora os dois.
+     */
+    order: Pick<Order, 'id' | 'publicId' | 'reference' | 'amountCents' | 'listAmountCents' | 'discountCents'>;
     customer: ChargeCustomer;
     expiresInMin: number;
   }): Promise<PixCharge>;

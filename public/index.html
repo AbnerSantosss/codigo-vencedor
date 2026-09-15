@@ -82,7 +82,13 @@
 
       <div class="cv-hero-prova">
         <a class="cv-eyebrow cv-eyebrow--muted cv-action-title cv-action-cue" href="#como-funciona" data-cv-cta="ver-video" aria-label="Ir para a seção de vídeo da ferramenta">
-          A ferramenta em ação
+          <!-- Dois rótulos porque o mesmo link tem dois papéis: no desktop ele
+               é o título do card ("A ferramenta em ação"); no celular ele é o
+               único botão secundário e leva o rótulo do CTA. Quem está
+               escondido sai com `display: none`, então não entra no nome
+               acessível nem no rótulo do clique. -->
+          <span class="cv-action-cue-label cv-action-cue-label--desktop">A ferramenta em ação</span>
+          <span class="cv-action-cue-label cv-action-cue-label--mobile">Quero conhecer mais</span>
           <span class="cv-action-arrow" aria-hidden="true">
             <svg width="36" height="42" viewBox="0 0 32 42" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
               <path class="cv-action-arrow-step cv-action-arrow-step--1" d="M3 5l13 8 13-8"/>
@@ -164,17 +170,23 @@
       </div>
 
       <div class="cv-hero-acao">
-        <a class="cv-btn cv-hero-primary" href="#checkout" data-cv-cta="hero">Quero o Código + app agora</a>
-        <a class="cv-btn cv-btn--ghost cv-hero-more" href="#como-funciona">
-          Quero conhecer mais
-          <span class="cv-hero-more-arrow" aria-hidden="true">
-            <svg width="22" height="25" viewBox="0 0 22 25" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path class="cv-hero-more-arrow-step cv-hero-more-arrow-step--1" d="M3 3l8 5 8-5"/>
-              <path class="cv-hero-more-arrow-step cv-hero-more-arrow-step--2" d="M5 10l6 4 6-4"/>
-              <path class="cv-hero-more-arrow-step cv-hero-more-arrow-step--3" d="M11 16v6m-3-3 3 3 3-3"/>
-            </svg>
-          </span>
-        </a>
+        <!-- Os dois botões vivem num invólucro só para o secundário poder ser
+             centralizado em relação ao primário no desktop: o invólucro tem a
+             largura do primário e o secundário se centra dentro dele. No
+             celular o invólucro é `display: contents` e não existe no layout. -->
+        <div class="cv-hero-ctas">
+          <a class="cv-btn cv-hero-primary" href="#checkout" data-cv-cta="hero">Quero o Código + app agora</a>
+          <a class="cv-btn cv-btn--ghost cv-hero-more" href="#como-funciona">
+            Quero conhecer mais
+            <span class="cv-hero-more-arrow" aria-hidden="true">
+              <svg width="22" height="25" viewBox="0 0 22 25" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path class="cv-hero-more-arrow-step cv-hero-more-arrow-step--1" d="M3 3l8 5 8-5"/>
+                <path class="cv-hero-more-arrow-step cv-hero-more-arrow-step--2" d="M5 10l6 4 6-4"/>
+                <path class="cv-hero-more-arrow-step cv-hero-more-arrow-step--3" d="M11 16v6m-3-3 3 3 3-3"/>
+              </svg>
+            </span>
+          </a>
+        </div>
         <p class="cv-btn-note"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Acesso liberado em segundos após o Pix · 7 dias de garantia</p>
       </div>
     </div>
@@ -461,6 +473,24 @@
             </div>
           </div>
 
+          <!-- Cupom de desconto.
+
+               O bloco inteiro nasce escondido e so aparece quando o painel
+               liga cupons (checkout.couponsEnabled) - ver initCoupon() no
+               lp.js. Assim, quem nao usa cupom nao ve um campo vazio
+               sugerindo que existe um desconto que ele nao tem.
+
+               O valor do desconto NUNCA e calculado aqui: o botao Aplicar
+               pergunta ao servidor e mostra o que ele responder. -->
+          <div class="cv-coupon" data-cv-coupon hidden>
+            <label class="cv-coupon-label" for="cv-coupon-input">Tem um cupom de desconto?</label>
+            <div class="cv-coupon-row">
+              <input class="cv-input cv-coupon-input" id="cv-coupon-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DIGITE O CUPOM" maxlength="40" data-cv-coupon-input>
+              <button type="button" class="cv-btn cv-btn--coupon" data-cv-coupon-apply>Aplicar</button>
+            </div>
+            <p class="cv-coupon-msg" data-cv-coupon-msg role="status" aria-live="polite" hidden></p>
+          </div>
+
           <p class="cv-formerror" data-cv-error role="alert" hidden></p>
 
           <div class="cv-submit-price"><span>Total a pagar</span><strong data-cv-price>R$ 27,90</strong><small>À vista no Pix</small></div>
@@ -534,6 +564,9 @@
         <div class="cv-order-row"><span>Bônus: 500 tokens para Aposta Segura</span><span class="cv-strike">R$ 29</span></div>
         <div class="cv-order-row cv-order-row--sum"><span>Valor original</span><span class="cv-strike" data-cv-price-from>R$ 273,90</span></div>
         <div class="cv-order-row cv-order-row--accent"><span>Desconto de lançamento</span><span data-cv-discount>− R$ 246,00</span></div>
+        <!-- Linha do cupom: so aparece depois de um cupom aceito pelo
+             servidor. O codigo entra no <b> por JavaScript. -->
+        <div class="cv-order-row cv-order-row--coupon" data-cv-coupon-row hidden><span>Cupom <b data-cv-coupon-code></b></span><span data-cv-coupon-off>− R$ 0,00</span></div>
       </div>
       <div class="cv-order-total"><b>Total hoje</b><span data-cv-price>R$ 27,90</span></div>
       <p class="cv-price-note">à vista no Pix · acesso imediato</p>

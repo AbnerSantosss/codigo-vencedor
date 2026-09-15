@@ -5,6 +5,7 @@ import { api, descreverErro, ehSessaoExpirada } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { num, pct, quando } from '@/lib/format';
 import type { EventDetail, EventsList, EventsSummary } from '@/lib/types';
+import { EVENTOS, ROTULO_EVENTO } from '@/lib/eventos';
 import { Segmented } from '@/components/ui/metrics';
 import { Button } from '@/components/ui/button';
 import { Field, Select } from '@/components/ui/form';
@@ -33,30 +34,6 @@ const PERIODOS = [
 ];
 
 const DIAS_VALIDOS = [1, 7, 30];
-
-/**
- * Os eventos que a landing dispara, com rótulo em português.
- *
- * O rótulo é para o dono e o valor técnico continua visível no `<code>` da
- * coluna Evento — quem configura o GTM precisa do nome exato, e quem lê o
- * dashboard precisa saber o que "add_payment_info" significa. Mostrar só um
- * dos dois deixaria sempre alguém sem informação.
- */
-const EVENTOS: { value: string; label: string }[] = [
-  { value: '', label: 'Todos os eventos' },
-  { value: 'page_view', label: 'Visualização de página' },
-  { value: 'view_content', label: 'Viu o conteúdo' },
-  { value: 'select_promotion', label: 'Viu a oferta' },
-  { value: 'click', label: 'Clique' },
-  { value: 'begin_checkout', label: 'Checkout aberto' },
-  { value: 'checkout_abandoned', label: 'Checkout abandonado' },
-  { value: 'generate_lead', label: 'Lead gerado' },
-  { value: 'add_payment_info', label: 'Pix gerado' },
-  { value: 'pix_abandoned', label: 'Pix abandonado' },
-  { value: 'purchase', label: 'Compra' },
-];
-
-const ROTULO_EVENTO = new Map(EVENTOS.filter((e) => e.value).map((e) => [e.value, e.label]));
 
 /** Ordem fixa dos parâmetros de campanha — deixa a leitura previsível. */
 const CHAVES_UTM = [
@@ -202,6 +179,11 @@ function DetalheEvento({ id }: { id: string }) {
         <Par rotulo="Id do evento">
           <code className="font-mono text-2xs">{e.eventId}</code>
         </Par>
+        <Par rotulo="Botão">
+          {e.clickLabel ?? '—'}
+          {e.cta ? <span className="block text-2xs text-muted">chave: {e.cta}</span> : null}
+        </Par>
+        <Par rotulo="Seção">{e.clickSection ?? '—'}</Par>
         <Par rotulo="Página">{e.page ?? '—'}</Par>
         <Par rotulo="Referrer">{e.referrer ?? 'sem referência'}</Par>
         <Par rotulo="Dispositivo">
@@ -517,6 +499,7 @@ export function TelaEventos() {
                   <tr>
                     <Th>Quando</Th>
                     <Th>Evento</Th>
+                    <Th>Onde clicou</Th>
                     <Th>Página</Th>
                     <Th>Origem</Th>
                     <Th>Sessão</Th>
@@ -542,6 +525,15 @@ export function TelaEventos() {
                             ) : null}
                             {falhouEnvio(i.forwarded) ? (
                               <Badge tom="danger" className="mt-1">envio falhou</Badge>
+                            ) : null}
+                          </Td>
+                          {/* Responde "onde foi que o lead clicou" sem sair
+                              da lista. Vazio na maioria das linhas de
+                              propósito: só clique tem botão e seção. */}
+                          <Td>
+                            {i.clickLabel ?? i.cta ?? '—'}
+                            {i.clickSection ? (
+                              <span className="block text-2xs text-muted">{i.clickSection}</span>
                             ) : null}
                           </Td>
                           <Td muted>{i.page ?? '—'}</Td>
@@ -577,7 +569,7 @@ export function TelaEventos() {
                         </tr>
                         {expandido ? (
                           <tr id={idPainel}>
-                            <td colSpan={6} className="border-b border-line bg-surface-2 p-0">
+                            <td colSpan={7} className="border-b border-line bg-surface-2 p-0">
                               {/* A tabela é mais larga que a tela no celular
                                   e rola dentro do `TableWrap`. `sticky
                                   left-0` prende o painel na borda visível,

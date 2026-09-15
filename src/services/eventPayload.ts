@@ -250,6 +250,9 @@ export async function montarPayload(event: string, ref: RefSaida): Promise<Corpo
         publicId: true,
         reference: true,
         amountCents: true,
+        listAmountCents: true,
+        discountCents: true,
+        couponCode: true,
         currency: true,
         status: true,
         provider: true,
@@ -290,6 +293,20 @@ export async function montarPayload(event: string, ref: RefSaida): Promise<Corpo
         publicId: order.publicId,
         amount: order.amountCents / 100,
         amountCents: order.amountCents,
+        /**
+         * Preço cheio, desconto e cupom viajam junto com o valor cobrado.
+         *
+         * Sem estes três, quem recebe o webhook vê uma venda de R$ 24,90 e
+         * não tem como saber se o produto baixou de preço ou se houve cupom —
+         * e a conciliação do CRM com o relatório do painel não fecha. Quando
+         * não houve cupom, `listAmount` é igual a `amount` e `discount` é
+         * zero, então integração já existente continua lendo o mesmo número.
+         */
+        listAmountCents: order.listAmountCents ?? order.amountCents,
+        listAmount: (order.listAmountCents ?? order.amountCents) / 100,
+        discountCents: order.discountCents,
+        discount: order.discountCents / 100,
+        coupon: order.couponCode,
         currency: order.currency,
         status: order.status,
         provider: order.provider,

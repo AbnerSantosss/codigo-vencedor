@@ -306,6 +306,28 @@
 .customer-actions a { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 3rem; padding: .5rem .875rem; border: 1px solid #3a514c; border-radius: .5rem; color: #b3e0c9; font-size: .8125rem; font-weight: 600; text-decoration: none; }
 .customer-actions a:hover { background: #223d32; }
 .customer-actions svg { width: 1rem; height: 1rem; }
+/* Jornada do cliente: a linha do tempo dentro do cartao do cliente.
+   O botao imita o visual dos atalhos de e-mail/WhatsApp ao lado para a linha
+   nao virar tres estilos diferentes de botao. */
+.journey-toggle { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 3rem; padding: .5rem .875rem; border: 1px solid #3a514c; border-radius: .5rem; background: none; color: #b3e0c9; font-size: .8125rem; font-weight: 600; cursor: pointer; }
+.journey-toggle:hover { background: #223d32; }
+.journey-toggle svg { width: 1rem; height: 1rem; }
+.journey-caret { transition: transform .15s ease; }
+.journey-caret-open { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .journey-caret { transition: none; } }
+.journey-wrap { margin-top: .875rem; border-top: 1px solid #30413e; padding-top: .875rem; }
+/* A borda esquerda e o marcador fazem a leitura de cima para baixo; sem eles
+   a lista parece um monte de linhas soltas e nao um caminho. */
+.journey { display: grid; gap: .625rem; margin: 0; padding: 0 0 0 1rem; list-style: none; border-left: 2px solid #30413e; }
+.journey-step { position: relative; display: grid; gap: .125rem; font-size: .8125rem; color: #c4d1cf; }
+.journey-step::before { content: ""; position: absolute; left: -1.3125rem; top: .375rem; width: .5rem; height: .5rem; border-radius: 50%; background: #3a514c; }
+.journey-step-win::before { background: #91d7b3; }
+.journey-step > time { font-size: .6875rem; color: #a0b4b5; }
+.journey-step > strong { font-size: .875rem; color: #e6efec; }
+.journey-step-win > strong { color: #91d7b3; }
+.journey-step > code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .6875rem; color: #a0b4b5; overflow-wrap: anywhere; }
+.journey-where { color: #b3e0c9; overflow-wrap: anywhere; }
+.journey-page { font-size: .6875rem; color: #a0b4b5; overflow-wrap: anywhere; }
 .customer-pagination { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: 1rem; }
 .customer-pagination > span { font-size: .75rem; color: #a0b4b5; }
 @media (min-width: 640px) { .dashboard-customer-dialog { width: min(52rem,calc(100vw - 3rem)); } }

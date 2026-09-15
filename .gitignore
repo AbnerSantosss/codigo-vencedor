@@ -27,6 +27,9 @@ credentials.json
 service-account*.json
 secrets/
 .secrets/
+SENHA*.txt
+ACESSO*.txt
+*SENHA-E-LOGIN*
 *.env.bak
 .envrc
 

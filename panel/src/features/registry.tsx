@@ -1,6 +1,8 @@
 import type { Me } from '@/lib/types';
 import { TelaAparencia } from './screens/Aparencia';
 import { TelaCheckout } from './screens/Checkout';
+import { TelaCliques } from './screens/Cliques';
+import { TelaCupons } from './screens/Cupons';
 import { TelaConta } from './screens/Conta';
 import { TelaConteudo } from './screens/Conteudo';
 import { TelaDashboard } from './screens/Dashboard';
@@ -23,7 +25,7 @@ export interface PropsDeTela {
  *
  * A lista de telas (rótulo, grupo, ícone, quem pode ver) mora em
  * `components/shell/screens.ts`; aqui fica só o mapeamento para o
- * componente, para o menu não precisar importar as 14 telas.
+ * componente, para o menu não precisar importar as 16 telas.
  */
 export const TELA_COMPONENTES: Record<string, React.ComponentType<PropsDeTela>> = {
   dashboard: TelaDashboard,
@@ -32,6 +34,8 @@ export const TELA_COMPONENTES: Record<string, React.ComponentType<PropsDeTela>> 
   gateway: TelaGateway,
   rastreamento: TelaRastreamento,
   eventos: TelaEventos,
+  cliques: TelaCliques,
+  cupons: TelaCupons,
   conteudo: TelaConteudo,
   aparencia: TelaAparencia,
   escassez: TelaEscassez,

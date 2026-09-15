@@ -358,7 +358,16 @@ export async function forwardPurchase(orderId: string): Promise<Record<string, s
         leadId: order.leadId,
         sessionId: order.lead.sessionId,
         utm: utm,
-        params: { value: order.amountCents / 100, currency: order.currency, order_id: order.reference },
+        params: {
+          value: order.amountCents / 100,
+          currency: order.currency,
+          order_id: order.reference,
+          /* Cupom e desconto entram no `params` do evento gravado para a tela
+             de eventos do painel conseguir responder "esta venda saiu com
+             cupom?" sem precisar abrir o pedido. Nulos quando não houve. */
+          coupon: order.couponCode,
+          discount: order.discountCents / 100,
+        },
         page: '/obrigado',
         ip: order.lead.ip,
         userAgent: order.lead.userAgent,
@@ -392,6 +401,13 @@ export async function forwardPurchase(orderId: string): Promise<Record<string, s
       content_type: 'product',
       content_ids: ['codigo-vencedor'],
       contents: [{ id: 'codigo-vencedor', quantity: 1, item_price: order.amountCents / 100 }],
+      /**
+       * `value` continua sendo o que entrou no caixa, não o preço de tabela —
+       * a Meta otimiza por receita, e mandar o valor cheio numa venda com
+       * cupom inflaria o ROAS da campanha. O cupom vai como informação à
+       * parte, que é exatamente para isso que a Meta tem o campo.
+       */
+      ...(order.couponCode ? { coupon: order.couponCode } : {}),
     },
   });
 }

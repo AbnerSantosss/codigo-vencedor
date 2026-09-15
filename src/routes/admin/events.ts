@@ -156,6 +156,166 @@ export const eventsRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
+  /**
+   * Onde as pessoas clicam.
+   *
+   * Responde a pergunta que originou a tela: "registrar os cliques e onde foi
+   * que o lead clicou". São três recortes da mesma janela — por botão, por
+   * seção da página e por página —, e cada um traz o número de pessoas
+   * distintas junto do número de cliques. Os dois importam: cem cliques de
+   * uma pessoa curiosa e cem cliques de cem pessoas dizem coisas opostas
+   * sobre o botão.
+   *
+   * SQL cru porque `groupBy` do Prisma não faz `COUNT(DISTINCT …)`, e é essa
+   * contagem que separa "cliques" de "gente". As três consultas leem as
+   * colunas promovidas (`cta`, `clickSection`), que têm índice — varrer o
+   * JSON de `params` custaria a tabela inteira a cada abertura da tela.
+   *
+   * `page_view` fica de fora: é navegação, não clique.
+   */
+  app.get('/events/clicks', async (req, reply) => {
+    const { days } = rangeQuery.parse(req.query);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    reply.header('Cache-Control', 'no-store');
+
+    /* `COALESCE(sessionId, visitorId, id)` é o "quem": sem sessão nem cookie
+       não há como agrupar, e cair no `id` da linha conta aquele clique como
+       uma pessoa só — errado para mais, nunca para menos. */
+    const [porBotao, porSecao, porPagina, totais] = await Promise.all([
+      prisma.$queryRaw<{ cta: string; label: string | null; section: string | null; cliques: bigint; pessoas: bigint }[]>`
+        SELECT "cta"                                   AS cta,
+               MAX("clickLabel")                       AS label,
+               MAX("clickSection")                     AS section,
+               COUNT(*)                                AS cliques,
+               COUNT(DISTINCT COALESCE("sessionId", "visitorId", "id")) AS pessoas
+        FROM "FunnelEvent"
+        WHERE "createdAt" >= ${since} AND "cta" IS NOT NULL
+        GROUP BY "cta"
+        ORDER BY cliques DESC
+        LIMIT 50
+      `,
+      prisma.$queryRaw<{ section: string; cliques: bigint; pessoas: bigint }[]>`
+        SELECT "clickSection"                          AS section,
+               COUNT(*)                                AS cliques,
+               COUNT(DISTINCT COALESCE("sessionId", "visitorId", "id")) AS pessoas
+        FROM "FunnelEvent"
+        WHERE "createdAt" >= ${since} AND "clickSection" IS NOT NULL
+        GROUP BY "clickSection"
+        ORDER BY cliques DESC
+        LIMIT 50
+      `,
+      prisma.$queryRaw<{ page: string | null; cliques: bigint; pessoas: bigint }[]>`
+        SELECT COALESCE(NULLIF("page", ''), '/')       AS page,
+               COUNT(*)                                AS cliques,
+               COUNT(DISTINCT COALESCE("sessionId", "visitorId", "id")) AS pessoas
+        FROM "FunnelEvent"
+        WHERE "createdAt" >= ${since} AND "event" IN ('click', 'select_promotion')
+        GROUP BY 1
+        ORDER BY cliques DESC
+        LIMIT 50
+      `,
+      prisma.$queryRaw<{ cliques: bigint; pessoas: bigint }[]>`
+        SELECT COUNT(*)                                AS cliques,
+               COUNT(DISTINCT COALESCE("sessionId", "visitorId", "id")) AS pessoas
+        FROM "FunnelEvent"
+        WHERE "createdAt" >= ${since} AND "event" IN ('click', 'select_promotion')
+      `,
+    ]);
+
+    const n = (v: bigint | undefined) => Number(v ?? 0);
+
+    return reply.send({
+      days,
+      total: { cliques: n(totais[0]?.cliques), pessoas: n(totais[0]?.pessoas) },
+      buttons: porBotao.map((r) => ({
+        cta: r.cta,
+        label: r.label,
+        section: r.section,
+        cliques: n(r.cliques),
+        pessoas: n(r.pessoas),
+      })),
+      sections: porSecao.map((r) => ({ section: r.section, cliques: n(r.cliques), pessoas: n(r.pessoas) })),
+      pages: porPagina.map((r) => ({ page: r.page ?? '/', cliques: n(r.cliques), pessoas: n(r.pessoas) })),
+    });
+  });
+
+  /**
+   * A linha do tempo de uma pessoa só.
+   *
+   * Aceita `leadId` ou `orderId` — a tela de clientes tem um ou outro
+   * dependendo da aba (rascunho traz lead, pago traz pedido), e obrigar o
+   * painel a descobrir o lead antes de perguntar só moveria a consulta de
+   * lugar.
+   *
+   * A busca casa por três chaves, e é a união delas que fecha o caminho: o
+   * `leadId` pega o que já estava identificado, o `visitorId` pega a
+   * navegação anônima de antes do formulário (inclusive de dias atrás), e o
+   * `sessionId` pega a visita em que a pessoa se identificou mas ainda não
+   * tinha cookie.
+   */
+  app.get('/events/journey', async (req, reply) => {
+    const q = z
+      .object({
+        leadId: z.string().trim().max(64).optional(),
+        orderId: z.string().trim().max(64).optional(),
+        limit: z.coerce.number().int().min(1).max(300).default(100),
+      })
+      .parse(req.query);
+    reply.header('Cache-Control', 'no-store');
+
+    if (!q.leadId && !q.orderId) return reply.code(400).send({ error: 'informe_lead_ou_pedido' });
+
+    const leadId =
+      q.leadId ??
+      (q.orderId
+        ? (await prisma.order.findUnique({ where: { id: q.orderId }, select: { leadId: true } }))?.leadId
+        : null) ??
+      null;
+    if (!leadId) return reply.code(404).send({ error: 'nao_encontrado' });
+
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, nome: true, email: true, visitorId: true, sessionId: true, createdAt: true },
+    });
+    if (!lead) return reply.code(404).send({ error: 'nao_encontrado' });
+
+    const chaves = [
+      { leadId: lead.id },
+      ...(lead.visitorId ? [{ visitorId: lead.visitorId }] : []),
+      ...(lead.sessionId ? [{ sessionId: lead.sessionId }] : []),
+    ];
+
+    const eventos = await prisma.funnelEvent.findMany({
+      where: { OR: chaves },
+      /* Busca do mais novo para o mais velho e inverte na saída.
+         A leitura é crescente — é uma linha do tempo, e ler de trás para
+         frente o caminho de alguém até a compra não ajuda ninguém —, mas o
+         corte do `take` tem de cair no começo, não no fim: buscando em ordem
+         crescente, quem tem mais eventos que o limite perdia exatamente a
+         compra, que é o último passo e o único que ninguém pode deixar de
+         ver. Visitante recorrente chega nesse limite com facilidade, porque
+         o casamento por `visitorId` junta todas as visitas dele. */
+      orderBy: { createdAt: 'desc' },
+      take: q.limit,
+      select: {
+        id: true,
+        event: true,
+        cta: true,
+        clickLabel: true,
+        clickSection: true,
+        page: true,
+        referrer: true,
+        orderId: true,
+        createdAt: true,
+      },
+    });
+
+    return reply.send({
+      lead: { id: lead.id, nome: lead.nome, email: lead.email, createdAt: lead.createdAt },
+      items: eventos.reverse(),
+    });
+  });
+
   /** Lista crua, paginada por cursor. */
   app.get('/events', async (req, reply) => {
     const { days, event, limit, cursor } = listQuery.parse(req.query);
@@ -175,6 +335,12 @@ export const eventsRoutes: FastifyPluginAsync = async (app) => {
         referrer: true,
         utm: true,
         params: true,
+        /* Colunas próprias desde a migração dos cliques. Antes isto só
+           existia dentro de `params`, e a lista mostrava um JSON cru onde o
+           dono queria ler "Quero conhecer mais, seção Herói". */
+        cta: true,
+        clickLabel: true,
+        clickSection: true,
         forwarded: true,
         createdAt: true,
       },
@@ -227,6 +393,9 @@ export const eventsRoutes: FastifyPluginAsync = async (app) => {
         userAgent: true,
         utm: true,
         params: true,
+        cta: true,
+        clickLabel: true,
+        clickSection: true,
         forwarded: true,
       },
     });

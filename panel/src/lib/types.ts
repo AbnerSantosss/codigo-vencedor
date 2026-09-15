@@ -54,6 +54,17 @@ export interface CheckoutCfg {
   externalUrl: string;
   buttonLabel: string;
   openInNewTab: boolean;
+  /**
+   * Libera `POST /api/orders/:publicId/simulate-payment`, que marca o pedido
+   * como pago sem dinheiro nenhum ter entrado — e dispara e-mail de acesso,
+   * Conversions API e webhooks de saída como uma venda de verdade. Fica
+   * desligada; ligar em produção é distribuir o produto de graça.
+   */
+  simulatedPaymentEnabled: boolean;
+  /** Aceitar cupom digitado no checkout embutido. */
+  couponsEnabled: boolean;
+  /** Piso do valor cobrado depois do cupom, em centavos. */
+  pixMinCents: number;
 }
 
 /* --------------------------------------------------------- Rastreamento -- *
@@ -328,6 +339,12 @@ export interface EventRow {
   referrer: string | null;
   /** Cortado em 8 caracteres pelo servidor: tela de depuração não identifica visitante. */
   sessionId: string | null;
+  /** Chave do botão clicado. Só existe em `click` e `select_promotion`. */
+  cta: string | null;
+  /** O texto que a pessoa leu no botão, como estava na tela. */
+  clickLabel: string | null;
+  /** Seção da página onde o clique aconteceu. */
+  clickSection: string | null;
   utm: Record<string, string> | null;
   params: Record<string, unknown> | null;
   /** Nome do evento de webhook correspondente, ou `null` quando não sai. */
@@ -370,6 +387,9 @@ export interface EventDetail {
     visitorId: string | null;
     leadId: string | null;
     orderId: string | null;
+    cta: string | null;
+    clickLabel: string | null;
+    clickSection: string | null;
     page: string | null;
     referrer: string | null;
     ip: string | null;
@@ -534,4 +554,124 @@ export interface TesteWebhookResponse {
   statusCode: number | null;
   resposta: string | null;
   deliveryId?: string;
+}
+
+/* ---------------------------------------------------------------- Cliques -- *
+ *
+ * De onde vem: `GET /api/admin/events/clicks`.
+ *
+ * `cliques` conta disparos e `pessoas` conta quem clicou — a diferença entre
+ * os dois é o que revela alguém batendo cinco vezes no mesmo botão porque
+ * nada aconteceu. Um botão com muitos cliques e poucas pessoas é um botão
+ * quebrado, não um botão popular.
+ * -------------------------------------------------------------------------- */
+
+export interface ClickCount {
+  cliques: number;
+  pessoas: number;
+}
+
+export interface ClickButton extends ClickCount {
+  /** Chave estável do botão — é por ela que o servidor agrupa. */
+  cta: string;
+  /** O rótulo lido na tela. Nulo em evento antigo, gravado antes das colunas. */
+  label: string | null;
+  section: string | null;
+}
+
+export interface ClickSection extends ClickCount {
+  section: string;
+}
+
+export interface ClickPage extends ClickCount {
+  page: string;
+}
+
+export interface ClicksSummary {
+  days: number;
+  total: ClickCount;
+  buttons: ClickButton[];
+  sections: ClickSection[];
+  pages: ClickPage[];
+}
+
+/* -------------------------------------------------------------- Jornada -- *
+ *
+ * `GET /api/admin/events/journey?leadId=…` — a linha do tempo de uma pessoa,
+ * em ordem crescente, juntando o que ela fez antes de virar lead (pelo
+ * visitante e pela sessão) com o que fez depois.
+ * -------------------------------------------------------------------------- */
+
+export interface JourneyStep {
+  id: string;
+  event: string;
+  cta: string | null;
+  clickLabel: string | null;
+  clickSection: string | null;
+  page: string | null;
+  referrer: string | null;
+  orderId: string | null;
+  createdAt: string;
+}
+
+export interface JourneyResponse {
+  lead: { id: string; nome: string | null; email: string | null; createdAt: string };
+  items: JourneyStep[];
+}
+
+/* --------------------------------------------------------------- Cupons -- *
+ *
+ * O cupom é digitado pelo comprador e criado aqui. A página nunca decide
+ * desconto: ela manda o código e o servidor devolve o valor.
+ * -------------------------------------------------------------------------- */
+
+export type CouponKind = 'percent' | 'fixed';
+
+/** A conta já feita pelo servidor sobre o preço de hoje. */
+export interface CouponPreview {
+  code: string;
+  kind: CouponKind;
+  value: number;
+  listAmountCents: number;
+  discountCents: number;
+  amountCents: number;
+  /** O desconto pedido era maior, mas parou no mínimo do Pix. */
+  limitadoPeloMinimo: boolean;
+}
+
+export interface CouponRow {
+  id: string;
+  code: string;
+  kind: CouponKind;
+  value: number;
+  active: boolean;
+  maxUses: number | null;
+  usedCount: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  preview: CouponPreview;
+}
+
+export interface CouponsResponse {
+  couponsEnabled: boolean;
+  priceCents: number;
+  pixMinCents: number;
+  coupons: CouponRow[];
+}
+
+export interface CouponUsageRow {
+  code: string;
+  pedidos: number;
+  pagos: number;
+  receitaCents: number;
+  descontoCents: number;
+}
+
+export interface CouponUsageResponse {
+  days: number;
+  items: CouponUsageRow[];
 }

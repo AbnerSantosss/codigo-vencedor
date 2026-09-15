@@ -263,16 +263,28 @@ export const appmaxGateway: PaymentGateway = {
       method: 'POST',
       body: {
         customer_id: customerId,
-        // Valores em centavos, como a doc especifica.
-        products_value: order.amountCents,
-        discount_value: 0,
+        /**
+         * Valores em centavos, como a doc especifica.
+         *
+         * Com cupom, o pedido sobe separado: preço cheio em `products_value`
+         * e o abatimento em `discount_value`. A conta que a Appmax vai cobrar
+         * é a subtração dos dois, que dá exatamente `order.amountCents` — o
+         * mesmo valor do QR. Mandar só o líquido funcionaria para cobrar, mas
+         * o relatório deles mostraria o produto valendo menos do que vale, e
+         * o desconto sumiria da conciliação.
+         *
+         * `listAmountCents` é opcional no banco por causa dos pedidos criados
+         * antes de o cupom existir; nesses, cheio e líquido são o mesmo.
+         */
+        products_value: order.listAmountCents ?? order.amountCents,
+        discount_value: order.discountCents,
         shipping_value: 0,
         products: [
           {
             sku: order.reference,
             name: cfg.content.productName,
             quantity: 1,
-            unit_value: order.amountCents,
+            unit_value: order.listAmountCents ?? order.amountCents,
             // Produto digital: sem frete e sem endereço de entrega.
             type: 'digital',
           },

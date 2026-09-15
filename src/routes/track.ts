@@ -35,6 +35,13 @@ const ALLOWED_EVENTS = new Set([
   'add_payment_info',
   'checkout_abandoned',
   'purchase',
+  /* Cupom: `coupon_applied` quando o servidor aceitou o código,
+     `coupon_rejected` quando recusou. Os dois saem da LP depois da resposta
+     de `/api/checkout/coupon`, então o que chega aqui é o veredito do
+     servidor, não a opinião da página. Servem para o dono ver quais cupons
+     circulam e quantas pessoas erram o código antes de desistir. */
+  'coupon_applied',
+  'coupon_rejected',
 ]);
 
 /**
@@ -119,6 +126,147 @@ function semCpfCompleto(params: Record<string, unknown>): Record<string, unknown
   }
 
   return limpo;
+}
+
+/**
+ * Puxa para colunas próprias o que o painel precisa perguntar por clique.
+ *
+ * Os três valores já vinham dentro de `params`, que é JSON. Responder "quais
+ * botões foram mais clicados esta semana" a partir de JSON exige varrer a
+ * tabela inteira a cada abertura da tela — e a tabela de eventos é a que mais
+ * cresce no projeto. Com colunas indexadas, a mesma pergunta vira um
+ * `GROUP BY`.
+ *
+ * `params` continua guardando tudo: as colunas são cópia para consulta, não
+ * substituição. Um evento antigo, gravado antes destas colunas existirem,
+ * simplesmente tem os três nulos — nada a migrar.
+ */
+function colunasDeClique(
+  event: string,
+  params: Record<string, unknown>,
+): {
+  cta: string | null;
+  clickLabel: string | null;
+  clickSection: string | null;
+} {
+  const texto = (v: unknown, max: number): string | null => {
+    if (typeof v !== 'string') return null;
+    const limpo = v.trim().replace(/\s+/g, ' ');
+    return limpo ? limpo.slice(0, max) : null;
+  };
+
+  const rotulo = texto(params.label ?? params.click_label, 120);
+
+  /**
+   * Chave de agrupamento a partir do texto do botão.
+   *
+   * Só os CTAs de compra têm `data-cv-cta` no HTML, e isso é de propósito: o
+   * `select_promotion` alimenta a etapa "Clicaram no CTA" do funil, e marcar
+   * botões que não levam à compra ali inflaria a taxa de conversão. Mas a
+   * pergunta do dono é "onde foi que o lead clicou", e ela vale para todo
+   * botão. A saída é derivar a chave do próprio rótulo: o relatório de
+   * cliques fica completo sem tocar no funil.
+   *
+   * Sem acento porque "Começar" e "Comecar" têm que cair no mesmo grupo se
+   * alguém reescrever a página.
+   */
+  const chaveDoRotulo = rotulo
+    ? rotulo
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 60) || null
+    : null;
+
+  return {
+    /* `cta` é o identificador estável do botão (`hero`, `oferta`, `faq`) e
+       vem do atributo `data-cv-cta` do HTML; nos cliques genéricos cai na
+       chave derivada do rótulo. */
+    cta: texto(params.cta, 60) ?? (event === 'click' ? chaveDoRotulo : null),
+    /* O texto que a pessoa leu no botão. Muda quando o dono reescreve a
+       página, por isso não serve de chave — serve para o dono reconhecer o
+       botão sem abrir o HTML. */
+    clickLabel: rotulo,
+    /* Em que trecho da página o clique aconteceu. Responde "onde foi que o
+       lead clicou", que é a pergunta que originou esta tela. */
+    clickSection: texto(params.section ?? params.click_section, 60),
+  };
+}
+
+/**
+ * Acha o lead por trás de um evento anônimo.
+ *
+ * Quem clica não se identificou ainda, então o evento nasce sem `leadId`. Mas
+ * a mesma pessoa preenche o formulário minutos depois, e a partir daí o
+ * `visitorId` (cookie httpOnly, de primeira parte) e o `sessionId` ligam os
+ * dois. Procurar aqui é o que permite abrir um cliente no painel e ver o
+ * caminho que ele fez até comprar, em vez de uma lista de cliques órfãos.
+ *
+ * A busca é em duas etapas, da mais barata para a mais cara:
+ *
+ * 1. `Lead.visitorId` — coluna indexada, e o cookie atravessa sessões: é o
+ *    mesmo da visita de ontem. Resolve o caso comum numa consulta só.
+ * 2. Um evento anterior da mesma sessão que já esteja ligado a um lead. Serve
+ *    para quem chegou sem o cookie (primeira visita, navegação privada) e
+ *    ainda assim preencheu o formulário nesta sessão.
+ *
+ * Nunca derruba a gravação: se a busca falhar, o evento entra sem lead, e a
+ * ligação pode ser refeita depois pelo `visitorId`.
+ */
+async function leadDoVisitante(visitorId: string | null, sessionId: string | null): Promise<string | null> {
+  if (!visitorId && !sessionId) return null;
+
+  if (visitorId) {
+    const lead = await prisma.lead
+      .findFirst({ where: { visitorId }, orderBy: { createdAt: 'desc' }, select: { id: true } })
+      .catch(() => null);
+    if (lead) return lead.id;
+  }
+
+  if (sessionId) {
+    const evento = await prisma.funnelEvent
+      .findFirst({
+        where: { sessionId, leadId: { not: null } },
+        orderBy: { createdAt: 'desc' },
+        select: { leadId: true },
+      })
+      .catch(() => null);
+    if (evento?.leadId) return evento.leadId;
+  }
+
+  return null;
+}
+
+/**
+ * Monta o `custom_data` que acompanha o evento nas APIs de conversão.
+ *
+ * Antes, nenhum evento vindo do navegador levava `custom_data` — ou seja, a
+ * Meta recebia "houve um InitiateCheckout" sem valor nenhum, e campanha
+ * otimizada por valor não tinha por onde otimizar. Aqui vai só o que a Meta
+ * entende e o que a página realmente tem: valor, moeda, produto e cupom.
+ *
+ * Lista fechada de propósito. `params` é objeto livre vindo do navegador, e
+ * repassá-lo inteiro mandaria para um terceiro qualquer campo que alguém
+ * resolvesse acrescentar na página um dia.
+ */
+function customDataDoEvento(params: Record<string, unknown>): Record<string, unknown> | undefined {
+  const saida: Record<string, unknown> = {};
+
+  const numero = (v: unknown): number | null => {
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const value = numero(params.value);
+  if (value !== null) saida.value = value;
+
+  if (typeof params.currency === 'string') saida.currency = params.currency.slice(0, 8);
+  if (typeof params.content_name === 'string') saida.content_name = params.content_name.slice(0, 120);
+  if (typeof params.coupon === 'string' && params.coupon) saida.coupon = params.coupon.slice(0, 40);
+
+  return Object.keys(saida).length > 0 ? saida : undefined;
 }
 
 interface AbandonoDoNavegador {
@@ -290,24 +438,34 @@ export const trackRoutes: FastifyPluginAsync = async (app) => {
        * APIs de conversão: contar a mesma conversão duas vezes na Meta é pior
        * do que perder uma, porque estraga a otimização da campanha.
        */
-      prisma.funnelEvent
-        .createMany({
-          skipDuplicates: true,
-          data: [
-            {
-              eventId: body.event_id,
-              event: body.event,
-              sessionId: body.session_id ?? null,
-              visitorId,
-              utm: sanitizeUtm(body.utm) as object,
-              params: params as object,
-              page: body.page ?? null,
-              referrer: body.referrer?.slice(0, 500) ?? null,
-              ip,
-              userAgent: userAgent ?? null,
-            },
-          ],
-        })
+      leadDoVisitante(visitorId, body.session_id ?? null)
+        .then((leadId) =>
+          prisma.funnelEvent.createMany({
+            skipDuplicates: true,
+            data: [
+              {
+                eventId: body.event_id,
+                event: body.event,
+                sessionId: body.session_id ?? null,
+                visitorId,
+                /**
+                 * Antes isto era sempre `null`, e o resultado aparecia na
+                 * tela como uma lista de cliques sem dono: dava para ver que
+                 * alguém clicou, nunca quem. Com o lead resolvido aqui, a
+                 * ficha do cliente consegue mostrar o caminho que ele fez.
+                 */
+                leadId,
+                utm: sanitizeUtm(body.utm) as object,
+                params: params as object,
+                ...colunasDeClique(body.event, params),
+                page: body.page ?? null,
+                referrer: body.referrer?.slice(0, 500) ?? null,
+                ip,
+                userAgent: userAgent ?? null,
+              },
+            ],
+          }),
+        )
         .then(({ count }) => {
           // Reenvio do mesmo evento: já está gravado e já foi encaminhado.
           if (count === 0) return undefined;
@@ -331,6 +489,19 @@ export const trackRoutes: FastifyPluginAsync = async (app) => {
             // Lead ainda não existe nestas etapas; a identificação vem
             // de fbp/fbc e do IP.
             lead: null,
+            /**
+             * Valor, moeda, produto e cupom vão junto.
+             *
+             * Sem isto, a Meta recebia "houve um InitiateCheckout" sem valor
+             * nenhum — e campanha otimizada por valor de conversão não tinha
+             * por onde otimizar. O GA4 tem o mesmo problema no funil de
+             * comércio. Lista fechada; ver `customDataDoEvento`.
+             */
+            customData: customDataDoEvento(params),
+            /* O GA4 exige `client_id`; sem estes dois ele cai no anônimo e o
+               relatório dele deixa de casar com o do painel. */
+            visitorId,
+            sessionId: body.session_id ?? null,
           });
         })
         .catch((err) => req.log.warn({ err, event: body.event }, 'falha ao processar evento de funil'));

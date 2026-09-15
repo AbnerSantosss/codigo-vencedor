@@ -27,7 +27,7 @@
     whatsapp: { url: '', message: '' },
     social: {},
     tracking: { gtmId: '', gtmIds: [] },
-    checkout: { mode: 'embedded', externalUrl: '', buttonLabel: '', openInNewTab: false, pollMs: 4000 }
+    checkout: { mode: 'embedded', externalUrl: '', buttonLabel: '', openInNewTab: false, couponsEnabled: false, pollMs: 4000 }
   };
 
   var brl = function (cents) {
@@ -205,8 +205,26 @@
      clonado do <template>, o preço dentro dele ainda é o do HTML estático.
      Sem isto, um preço trocado no painel apareceria certo na página e errado
      no modal. */
+  /* ---------------------------------------------------------------------
+     Cupom de desconto
+
+     O cupom e digitado pela pessoa, mas quem decide se ele vale, quanto vale
+     e qual o piso e o servidor: a pagina so pergunta em /api/checkout/coupon
+     e mostra a resposta. Calcular desconto aqui seria deixar o preco da venda
+     na mao de quem abre o DevTools.
+
+     `CUPOM` guarda a ultima resposta aceita. Null = sem cupom, e a pagina
+     volta a mostrar o preco cheio.
+     --------------------------------------------------------------------- */
+  var CUPOM = null;
+
+  /* O que a pessoa vai pagar agora. E a unica fonte do numero na tela. */
+  function precoAtualCents() {
+    return CUPOM ? CUPOM.amountCents : CFG.priceCents;
+  }
+
   function applyPrices(root) {
-    $$('[data-cv-price]', root).forEach(function (el) { el.textContent = brl(CFG.priceCents); });
+    $$('[data-cv-price]', root).forEach(function (el) { el.textContent = brl(precoAtualCents()); });
     $$('[data-cv-price-from]', root).forEach(function (el) { el.textContent = brl(CFG.priceFromCents); });
     $$('[data-cv-discount]', root).forEach(function (el) { el.textContent = '− ' + brl(CFG.priceFromCents - CFG.priceCents); });
   }
@@ -1140,7 +1158,10 @@
         utm: UTMS,
         session_id: SESSION_ID,
         fbp: readCookie('_fbp'),
-        fbc: fbcValue()
+        fbc: fbcValue(),
+        /* Quem decide se vale e quanto vale e o servidor; a pagina so diz
+           qual codigo a pessoa digitou. */
+        cupom: CUPOM ? CUPOM.code : undefined
       };
 
       if (data.nome.split(/\s+/).length < 2) return showError('Informe seu nome e sobrenome.', 'nome');
@@ -1148,7 +1169,12 @@
       if (!validCpf(data.cpf)) return showError('CPF inválido. Confira os números digitados.', 'cpf');
       if (data.fone.length < 10) return showError('Informe um WhatsApp com DDD.', 'fone');
 
-      data.event_id = track('generate_lead');
+      data.event_id = track('generate_lead', {
+        value: precoAtualCents() / 100,
+        currency: CFG.currency,
+        coupon: CUPOM ? CUPOM.code : undefined,
+        discount: CUPOM ? CUPOM.discountCents / 100 : undefined
+      });
 
       submitBtn.disabled = true;
       var originalLabel = submitBtn.innerHTML;
@@ -1165,7 +1191,16 @@
         })
         .then(function (res) {
           showPix(res, data.nome);
-          track('add_payment_info', { order_id: res.orderPublicId });
+          /* Daqui pra frente o numero que vale e o do pedido criado, nao o
+             que estava na tela: o servidor reconfere o cupom na hora de
+             cobrar e pode ter recusado. */
+          track('add_payment_info', {
+            order_id: res.orderPublicId,
+            value: (res.amountCents != null ? res.amountCents : precoAtualCents()) / 100,
+            currency: CFG.currency,
+            coupon: res.couponCode || undefined,
+            discount: res.discountCents ? res.discountCents / 100 : undefined
+          });
           startPolling(res.orderPublicId);
         })
         .catch(function () {
@@ -1181,6 +1216,29 @@
       /* Fecha o abandono: daqui em diante sair da tela é ir pagar no banco,
          não desistir. */
       pixGerado = true;
+
+      /* O cupom valia quando a pessoa clicou em Aplicar e nao valia mais na
+         hora de cobrar (acabou, foi desativado, expirou). O Pix ja saiu pelo
+         preco cheio, entao a tela tem que contar isso em vez de continuar
+         exibindo um desconto que ninguem recebeu. */
+      if (res.couponError) {
+        CUPOM = null;
+        pintarCupom();
+        var recusa = $('[data-cv-coupon-msg]');
+        if (recusa) {
+          recusa.textContent = 'O cupom deixou de valer e o Pix foi gerado sem desconto.';
+          recusa.hidden = false;
+          recusa.classList.remove('cv-coupon-msg--ok');
+          recusa.classList.add('cv-coupon-msg--erro');
+        }
+        track('coupon_rejected', { coupon: (res.couponCode || ''), reason: res.couponError });
+      } else if (CUPOM && res.amountCents != null && res.amountCents !== CUPOM.amountCents) {
+        /* Preco mudou no painel entre aplicar e cobrar: manda o que o
+           servidor cobrou. */
+        CUPOM.amountCents = res.amountCents;
+        CUPOM.discountCents = res.discountCents || 0;
+        pintarCupom();
+      }
       $('[data-cv-firstname]').textContent = (nome || '').split(' ')[0];
       $('[data-cv-emv]').textContent = res.emv || '';
 
@@ -1405,6 +1463,136 @@
   /* ---------------------------------------------------------------------
      Boot
      --------------------------------------------------------------------- */
+  /* ---------------------------------------------------------------------
+     Campo de cupom
+
+     Tres regras que moram aqui:
+
+     1. O bloco so aparece se o painel ligou cupons. Mostrar um campo de
+        cupom para quem nao tem cupom nenhum e um convite a abandonar o
+        carrinho para procurar um na internet.
+     2. Aplicar nao consome uso. O servidor so gasta o cupom quando cria a
+        cobranca — e reconfere tudo naquele momento, porque entre aplicar e
+        gerar o Pix o dono pode ter desativado o cupom no painel.
+     3. Mexeu no campo depois de aplicar, o desconto cai. Sem isso a pessoa
+        apagaria o codigo, veria o preco com desconto na tela e receberia um
+        Pix pelo preco cheio.
+     --------------------------------------------------------------------- */
+  function pintarCupom() {
+    var linha = $('[data-cv-coupon-row]');
+    var codigo = $('[data-cv-coupon-code]');
+    var valor = $('[data-cv-coupon-off]');
+
+    if (linha) linha.hidden = !CUPOM;
+    if (CUPOM) {
+      if (codigo) codigo.textContent = CUPOM.code;
+      if (valor) valor.textContent = '- ' + brl(CUPOM.discountCents);
+    }
+
+    /* Repinta todos os `data-cv-price` da pagina, inclusive o do modal da
+       VSL: o total tem que ser o mesmo em qualquer lugar onde apareca. */
+    applyPrices(document);
+  }
+
+  function initCoupon() {
+    var box = $('[data-cv-coupon]');
+    if (!box) return;
+
+    var ligado = !!(CFG.checkout && CFG.checkout.couponsEnabled);
+    box.hidden = !ligado;
+    if (!ligado) return;
+
+    var campo = $('[data-cv-coupon-input]', box);
+    var botao = $('[data-cv-coupon-apply]', box);
+    var aviso = $('[data-cv-coupon-msg]', box);
+    if (!campo || !botao) return;
+
+    function dizer(texto, ok) {
+      if (!aviso) return;
+      aviso.textContent = texto || '';
+      aviso.hidden = !texto;
+      aviso.classList.toggle('cv-coupon-msg--ok', ok === true);
+      aviso.classList.toggle('cv-coupon-msg--erro', ok === false);
+    }
+
+    function normalizar(v) {
+      return (v || '').trim().split(' ').join('').toUpperCase();
+    }
+
+    function limpar() {
+      if (!CUPOM) return;
+      CUPOM = null;
+      pintarCupom();
+      dizer('', null);
+    }
+
+    /* Editou o campo: o desconto que estava na tela deixa de valer na hora. */
+    campo.addEventListener('input', function () {
+      campo.value = normalizar(campo.value);
+      if (CUPOM && campo.value !== CUPOM.code) limpar();
+    });
+
+    /* Enter dentro do campo aplica o cupom em vez de enviar o formulario —
+       apertar Enter no cupom e mandar o checkout sem CPF seria o pior
+       resultado possivel. */
+    campo.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); aplicar(); }
+    });
+
+    botao.addEventListener('click', aplicar);
+
+    function aplicar() {
+      var codigo = normalizar(campo.value);
+      if (!codigo) { limpar(); return dizer('Digite o cupom.', false); }
+      if (CUPOM && CUPOM.code === codigo) return;
+
+      botao.disabled = true;
+      var rotulo = botao.textContent;
+      botao.textContent = 'Conferindo...';
+
+      fetch('/api/checkout/coupon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cupom: codigo })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res || !res.ok) {
+            CUPOM = null;
+            pintarCupom();
+            dizer((res && res.message) || 'Cupom invalido.', false);
+            /* O motivo cru vai para o dataLayer e para o painel: e assim que
+               o dono descobre que meia duzia de pessoas digitou um cupom que
+               ele nunca criou, ou que expirou na semana passada. */
+            track('coupon_rejected', { coupon: codigo, reason: (res && res.erro) || 'desconhecido' });
+            return;
+          }
+
+          CUPOM = res;
+          pintarCupom();
+          dizer(
+            res.limitadoPeloMinimo
+              ? 'Cupom aplicado. O valor minimo do Pix e ' + brl(res.amountCents) + ', entao o desconto parou nele.'
+              : 'Cupom aplicado: ' + brl(res.discountCents) + ' de desconto.',
+            true
+          );
+          track('coupon_applied', {
+            coupon: res.code,
+            discount: res.discountCents / 100,
+            value: res.amountCents / 100,
+            currency: CFG.currency
+          });
+        })
+        .catch(function () {
+          dizer('Nao conseguimos conferir o cupom agora. Tente de novo.', false);
+        })
+        .then(function () {
+          botao.disabled = false;
+          botao.textContent = rotulo;
+        });
+    }
+  }
+
   function boot() {
     applyConfig();
     document.documentElement.classList.toggle('cv-real-deadline', CFG.countdown.mode === 'campaign' && Date.parse(CFG.countdown.endsAt) > Date.now());
@@ -1413,6 +1601,7 @@
     initVideo();
     safely('docs-modal', initDocs);
     initApostaSeguraCard();
+    safely('cupom', initCoupon);
     initCheckout();
     initCtas();
     initClickTracking();

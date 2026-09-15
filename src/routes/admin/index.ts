@@ -9,6 +9,7 @@ import { usersRoutes } from './users.js';
 import { emailRoutes } from './email.js';
 import { recoveryRoutes } from './recovery.js';
 import { webhooksAdminRoutes } from './webhooks.js';
+import { couponsRoutes } from './coupons.js';
 
 /**
  * Tudo aqui vive sob /api/admin. As rotas de autenticação ficam antes do
@@ -25,4 +26,5 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   await app.register(emailRoutes);
   await app.register(recoveryRoutes);
   await app.register(webhooksAdminRoutes);
+  await app.register(couponsRoutes);
 };

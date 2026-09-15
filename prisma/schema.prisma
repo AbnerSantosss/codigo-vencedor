@@ -240,9 +240,32 @@ model Order {
   leadId String
   lead   Lead   @relation(fields: [leadId], references: [id])
 
+  /// Valor efetivamente COBRADO, já com o cupom descontado. É ele que vai
+  /// para o gateway, para o e-mail, para a CAPI e para o painel — nenhum
+  /// lugar do sistema precisa saber somar desconto para saber quanto entrou.
   amountCents Int
-  currency    String      @default("BRL")
-  status      OrderStatus @default(pending)
+
+  /// Preço de tabela no instante da compra, antes do cupom.
+  ///
+  /// Nulo quando não houve cupom (a esmagadora maioria dos pedidos, e todos
+  /// os anteriores a esta coluna): aí `amountCents` já é o preço de tabela.
+  /// Guardado congelado porque `SiteConfig.content.priceCents` é editável —
+  /// ler o preço de lá faria o relatório de um pedido antigo mudar de
+  /// resposta no dia em que o dono mexesse no preço.
+  listAmountCents Int?
+
+  /// Quanto o cupom abateu, em centavos. Zero quando não houve cupom.
+  discountCents Int @default(0)
+
+  /// Código do cupom aplicado, em maiúsculas, congelado como texto.
+  ///
+  /// Texto e não relação de propósito: o cupom pode ser apagado do painel e
+  /// o histórico do pedido continua dizendo qual foi. O relatório por cupom
+  /// casa por este campo.
+  couponCode String?
+
+  currency String      @default("BRL")
+  status   OrderStatus @default(pending)
 
   provider          GatewayId
   providerOrderId   String?
@@ -286,6 +309,68 @@ model Order {
   @@index([createdAt])
   @@index([providerPaymentId])
   @@index([recoveryNextAt])
+  @@index([couponCode])
+}
+
+enum CouponKind {
+  percent
+  fixed
+}
+
+/// Cupom de desconto criado no painel e digitado pelo comprador.
+///
+/// Tabela própria, e não mais um bloco JSON dentro de `SiteConfig`, por duas
+/// razões que o JSON não resolve:
+///
+///  1. **Contagem de uso precisa ser atômica.** O limite de usos é a única
+///     trava de um cupom de 100%; com um JSON lido, alterado e regravado,
+///     duas pessoas clicando no mesmo segundo passam as duas. Aqui o consumo
+///     é um `UPDATE ... WHERE usedCount < maxUses`, que o banco serializa.
+///  2. **`SiteConfig` tem cache de 60 s.** Um cupom desativado continuaria
+///     valendo por um minuto — tempo de sobra para ser divulgado num grupo.
+///
+/// O desconto NUNCA é calculado no navegador: a página só mostra a prévia
+/// que o servidor devolveu, e o valor cobrado é recalculado do zero em
+/// `POST /api/checkout`.
+model Coupon {
+  id String @id @default(uuid())
+
+  /// Sempre gravado em MAIÚSCULAS e sem espaços. A comparação com o que a
+  /// pessoa digita é feita depois de normalizar dos dois lados, senão
+  /// "vip10" e "VIP10 " viram cupons diferentes para quem digita e o mesmo
+  /// para quem criou.
+  code String @unique
+
+  kind CouponKind
+
+  /// `percent`: 1..100. `fixed`: centavos a abater.
+  ///
+  /// Em nenhum dos dois casos o valor pode zerar o pedido: o piso é o
+  /// `checkout.pixMinCents` do painel, aplicado no serviço. Um cupom de 100%
+  /// resulta no mínimo do Pix, nunca em R$ 0,00 — cobrança sem valor não
+  /// existe para o gateway e o pedido nasceria impossível de pagar.
+  value Int
+
+  active Boolean @default(true)
+
+  /// Teto de usos. Nulo = ilimitado. Só conta uso que virou pedido.
+  maxUses   Int?
+  usedCount Int  @default(0)
+
+  /// Janela de validade. Ambos nulos = vale desde sempre e para sempre.
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  /// Anotação do dono ("teste do Mercado Pago", "campanha do grupo").
+  note String?
+
+  /// E-mail do admin que criou, só para auditoria na tela.
+  createdBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, createdAt])
 }
 
 model PixCharge {
@@ -353,6 +438,22 @@ model FunnelEvent {
   orderId String?
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
+  /// Identificador do CTA (`data-cv-cta`) quando o clique foi num botão de
+  /// compra; nulo nos demais.
+  cta String?
+
+  /// Rótulo visível e seção do elemento clicado, promovidos de dentro de
+  /// `params` para coluna própria.
+  ///
+  /// Continuam também no `params` (é de lá que o navegador os manda e é lá
+  /// que a tela de depuração mostra o payload cru). A cópia existe para o
+  /// relatório: agrupar por `params->>'click_label'` obriga a varrer a
+  /// tabela inteira ou a manter um índice GIN sobre um JSON livre, enquanto
+  /// duas colunas de texto com índice respondem "quais botões foram mais
+  /// clicados" em milissegundos.
+  clickLabel   String?
+  clickSection String?
+
   utm       Json?
   params    Json?
   page      String?
@@ -370,6 +471,8 @@ model FunnelEvent {
   @@index([visitorId])
   @@index([leadId])
   @@index([createdAt])
+  @@index([cta, createdAt])
+  @@index([clickSection, createdAt])
 }
 
 /**
