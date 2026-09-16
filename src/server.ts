@@ -1,5 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCookie from '@fastify/cookie';
@@ -21,6 +23,29 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** Em dev roda de src/, em produção de dist/ — os dois estão um nível abaixo da raiz. */
 const root = join(here, '..');
 const PUBLIC_DIR = join(root, 'public');
+
+/**
+ * Versão do CSS e do JS da LP, injetada como `?v=` nas tags do HTML.
+ *
+ * Os arquivos da LP não levam hash no nome, mas são servidos com
+ * `max-age=31536000, immutable` — a combinação fez o deploy de 15/09 nunca
+ * chegar a quem já tinha visitado o site: a Cloudflare continuou entregando
+ * o CSS de 11/09 por um ano. Pior que atrasar, isso mistura versões, porque
+ * o HTML é `no-store` e atualiza na hora: HTML novo com CSS velho quebra a
+ * página. O `?v=` muda a chave de cache junto com o conteúdo, o que dispensa
+ * purge manual a cada publicação.
+ */
+const ASSETS_V = (() => {
+  const h = createHash('sha1');
+  for (const f of ['css/lp.css', 'js/lp.js', 'js/obrigado.js']) {
+    try {
+      h.update(readFileSync(join(PUBLIC_DIR, f)));
+    } catch {
+      // Arquivo ausente não impede o servidor de subir; só muda a versão.
+    }
+  }
+  return h.digest('hex').slice(0, 10);
+})();
 /**
  * Painel administrativo em React, compilado por Vite (`npm run build:panel`).
  *
@@ -162,6 +187,7 @@ async function sendLpPage(file: string, req: import('fastify').FastifyRequest, r
 
   const html = await renderHtml(join(PUBLIC_DIR, file), {
     nonce,
+    assetsV: ASSETS_V,
     price: (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
     priceDecimal: (cents / 100).toFixed(2),
   });
