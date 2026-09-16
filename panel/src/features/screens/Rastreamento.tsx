@@ -36,12 +36,13 @@ import {
   Badge,
   Callout,
   Card,
-  CardTitle,
   Divider,
   ErrorState,
   GroupTitle,
   Loading,
 } from '@/components/ui/layout';
+import { SurfaceHeader } from '@/components/ui/surface';
+import { SaveBar } from '@/components/ui/save-bar';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { JsonBlock } from '@/components/ui/json';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -674,23 +675,28 @@ function Formulario({ inicial }: { inicial: TrackingResponse }) {
   }, [containers, pixels, streams, conversoes, tiktok, kwai, segredos, inicial.tracking]);
 
   const botaoSalvar = (
-    <Actions>
-      <Button loading={salvar.isPending} onClick={() => salvar.mutate(undefined)} disabled={quantosErros > 0}>
-        Salvar rastreamento
-      </Button>
-      <span className="text-2xs text-muted">
-        {quantosErros > 0
+    <SaveBar
+      inset={false}
+      dirty={sujo}
+      saving={salvar.isPending}
+      disabled={quantosErros > 0}
+      onSave={() => salvar.mutate(undefined)}
+      saveLabel="Salvar rastreamento"
+      message={
+        quantosErros > 0
           ? `Corrija ${contar(quantosErros, 'campo marcado', 'campos marcados')} para salvar.`
-          : 'Salva as três abas de uma vez.'}
-      </span>
-    </Actions>
+          : sujo
+            ? 'Alterações não salvas — salva as três abas de uma vez.'
+            : 'Tudo salvo. O botão salva as três abas de uma vez.'
+      }
+    />
   );
 
   return (
     <>
       {/* ------------------------------------------- o que está instalado --- */}
       <Card>
-        <CardTitle
+        <SurfaceHeader
           title="O que está instalado"
           hint="O retrato do que está gravado no servidor agora — não do que está digitado na tela."
           action={sujo ? <Badge tom="pending">alterações não salvas</Badge> : null}
@@ -744,7 +750,7 @@ function Formulario({ inicial }: { inicial: TrackingResponse }) {
       </Card>
 
       <Tabs defaultValue="meta">
-        <TabsList>
+        <TabsList variant="underline">
           <TabsTrigger value="meta">Meta (servidor)</TabsTrigger>
           <TabsTrigger value="gtm">Google Tag Manager</TabsTrigger>
           <TabsTrigger value="outras">Outras plataformas</TabsTrigger>
@@ -753,7 +759,7 @@ function Formulario({ inicial }: { inicial: TrackingResponse }) {
         {/* ----------------------------------------------------- Meta --- */}
         <TabsContent value="meta">
           <Card>
-            <CardTitle
+            <SurfaceHeader
               title="Meta — API de Conversões"
               hint="Os eventos saem daqui do servidor, não do navegador: não dependem de bloqueador de anúncio, aba fechada nem cookie de terceiro. O Purchase nasce no webhook do pagamento."
             />
@@ -961,7 +967,7 @@ function Formulario({ inicial }: { inicial: TrackingResponse }) {
         {/* ------------------------------------------------------ GTM --- */}
         <TabsContent value="gtm">
           <Card>
-            <CardTitle
+            <SurfaceHeader
               title="Google Tag Manager"
               hint="O único identificador que chega ao HTML da página. Gatilhos e tags você monta dentro do GTM — foi assim que o dono pediu."
             />
@@ -1052,7 +1058,7 @@ function Formulario({ inicial }: { inicial: TrackingResponse }) {
         {/* --------------------------------------------------- Outras --- */}
         <TabsContent value="outras">
           <Card>
-            <CardTitle
+            <SurfaceHeader
               title="Outras plataformas"
               hint="GA4 recebe evento pelo servidor. Google Ads fica guardado para conferência, e TikTok e Kwai esperam o envio existir."
             />

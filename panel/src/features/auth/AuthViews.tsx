@@ -5,6 +5,8 @@ import type { Me } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/form';
 import { Callout, type Tom } from '@/components/ui/layout';
+import { Surface } from '@/components/ui/surface';
+import { PageBackdrop } from '@/components/ui/backdrop';
 import { useToast } from '@/components/ui/toast';
 
 /* ==========================================================================
@@ -14,6 +16,11 @@ import { useToast } from '@/components/ui/toast';
    O que estas telas propositalmente NÃO fazem: guardar e-mail, senha ou
    qualquer token em `localStorage`. A sessão vive só nos cookies `httpOnly`
    que o servidor escreve.
+
+   Visual (F6): a página inteira é um `PageBackdrop` (grade + ruído + halos,
+   tudo em CSS) e o formulário mora num `Surface tone="elevated"` com
+   holofote — o mesmo cartão do resto do painel, sem CSS por classe. Nada
+   aqui é `style=""` nem `<style>`: a CSP do /admin bloquearia calado.
    ========================================================================== */
 
 function Moldura({
@@ -34,29 +41,60 @@ function Moldura({
   login?: boolean;
 }) {
   return (
-    <div className={login ? 'admin-login' : 'grid min-h-svh place-items-center p-5'}>
-      {login ? (
-        <section className="admin-login-intro" aria-label="Código Vencedor — Backoffice">
-          <a href="/" className="admin-login-brand"><img src="/assets/logo.png" width="640" height="238" alt="Código Vencedor" /></a>
-          <p className="admin-login-eyebrow">BACKOFFICE · CÓDIGO VENCEDOR</p>
-          <h1>Sua operação.<br /><span>Sob seu controle.</span></h1>
-          <p className="admin-login-description">Acompanhe pedidos, gerencie sua página e cuide de cada etapa da venda em um só lugar.</p>
-          <div className="admin-login-context"><ShieldCheck size={20} aria-hidden="true" /><span>Área exclusiva da equipe</span></div>
-        </section>
-      ) : null}
-      <form
-        onSubmit={onSubmit}
-        className={login ? 'admin-login-form' : 'w-[min(100%,24rem)] rounded-lg border border-line bg-surface p-6 shadow-float sm:p-8'}
-      >
-        {login ? <div className="admin-login-lock"><ShieldCheck size={24} aria-hidden="true" /></div> : null}
-        <h2 className="mb-1 text-xl font-extrabold tracking-tight">{titulo}</h2>
-        <p className="mb-6 text-sm text-muted">{sub}</p>
-        {aviso ? <Callout tom={aviso.tom}>{aviso.texto}</Callout> : null}
-        <div className="grid gap-4">{children}</div>
-        {rodape ? <div className="mt-5 text-center">{rodape}</div> : null}
-        {login ? <p className="admin-login-note">Acesso restrito a usuários autorizados.</p> : null}
-      </form>
-    </div>
+    // O `PageBackdrop` nasce com margens negativas para "sangrar" dentro do
+    // AppShell; aqui ele é a raiz da página, então as margens voltam a zero —
+    // senão sobra rolagem horizontal em 320px.
+    <PageBackdrop
+      as="main"
+      className="mx-0 grid min-h-svh place-items-center rounded-none px-4 py-8 sm:mx-0 sm:px-6"
+    >
+      <div className="grid w-full max-w-sm justify-items-center gap-6">
+        {login ? (
+          <header className="grid justify-items-center gap-3 text-center" aria-label="Código Vencedor — Backoffice">
+            <a href="/" className="inline-flex rounded-sm" aria-label="Ir para o site">
+              <img
+                src="/assets/logo.png"
+                width="640"
+                height="238"
+                alt="Código Vencedor"
+                className="h-auto w-40 sm:w-44"
+              />
+            </a>
+            <p className="text-2xs font-extrabold tracking-[0.13em] text-accent uppercase">
+              Backoffice · Código Vencedor
+            </p>
+          </header>
+        ) : null}
+
+        <Surface tone="elevated" spotlight className="w-full px-4 py-6 sm:px-7 sm:py-7">
+          <form onSubmit={onSubmit} className="min-w-0">
+            <span
+              className="mb-5 inline-flex size-12 items-center justify-center rounded-md bg-accent-soft text-accent inset-shadow-hi"
+              aria-hidden
+            >
+              <ShieldCheck className="size-6" />
+            </span>
+            <h1 className="mb-1 text-2xl font-extrabold tracking-tight">{titulo}</h1>
+            <p className="mb-6 text-sm leading-relaxed text-muted">{sub}</p>
+            {aviso ? <Callout tom={aviso.tom}>{aviso.texto}</Callout> : null}
+            <div className="grid gap-4">{children}</div>
+            {rodape ? <div className="mt-5 text-center">{rodape}</div> : null}
+            {login ? (
+              <p className="mt-6 border-t border-line pt-4 text-center text-2xs text-muted">
+                Acesso restrito a usuários autorizados.
+              </p>
+            ) : null}
+          </form>
+        </Surface>
+
+        {login ? (
+          <p className="inline-flex items-center gap-2 text-xs text-muted">
+            <ShieldCheck className="size-4 text-ok" aria-hidden />
+            Área exclusiva da equipe
+          </p>
+        ) : null}
+      </div>
+    </PageBackdrop>
   );
 }
 

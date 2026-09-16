@@ -6,18 +6,9 @@ import { quando } from '@/lib/format';
 import type { Role, UserRow, UsersResponse, UserStatus } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGrid, Input, Select } from '@/components/ui/form';
-import {
-  Badge,
-  Callout,
-  Card,
-  CardTitle,
-  ErrorState,
-  Loading,
-  Table,
-  TableWrap,
-  Td,
-  Th,
-} from '@/components/ui/layout';
+import { Badge, Callout, ErrorState, Loading } from '@/components/ui/layout';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
+import { Table, TBody, TD, TH, THead, TRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { chaves, useAcao } from '../hooks';
 
@@ -100,8 +91,8 @@ export function TelaUsuarios() {
 
   return (
     <>
-      <Card wide>
-        <CardTitle
+      <Surface as="section" className="mb-5">
+        <SurfaceHeader
           title="Quem tem acesso ao painel"
           hint="Administrador mexe em tudo, inclusive gateway, segredos e usuários. Usuário cuida de conteúdo, aparência, escassez, links e vê as métricas."
           action={
@@ -112,77 +103,79 @@ export function TelaUsuarios() {
           }
         />
 
-        <TableWrap>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Pessoa</Th>
-                <Th>Papel</Th>
-                <Th>Status</Th>
-                <Th>Último acesso</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.users.map((u) => {
-                const eu = u.id === data.me;
-                const st = STATUS[u.status];
-                const ultimoDono = u.role === 'owner' && donos <= 1;
-                return (
-                  <tr key={u.id}>
-                    <Td>
-                      {u.name ?? '—'}
-                      {eu ? <span className="ml-1.5 text-2xs text-accent">(você)</span> : null}
-                      <span className="block text-2xs text-muted">{u.email}</span>
-                    </Td>
-                    <Td>
-                      <Select
-                        aria-label={`Papel de ${u.email}`}
-                        className="min-h-10 w-auto min-w-36 px-2 py-1 text-xs"
-                        value={u.role}
-                        disabled={ultimoDono || trocarPapel.isPending}
-                        onChange={(e) => trocarPapel.mutate({ id: u.id, role: e.target.value as Role })}
-                      >
-                        <option value="owner">Administrador</option>
-                        <option value="editor">Usuário</option>
-                      </Select>
-                    </Td>
-                    <Td>
-                      <Badge tom={st.tom}>{st.label}</Badge>
-                      {u.status === 'convite_enviado' && u.inviteExpiresAt ? (
-                        <span className="block text-2xs whitespace-normal text-muted">
-                          vence {quando(u.inviteExpiresAt)}
-                        </span>
+        <Table sticky stackBelow="sm" caption="Usuários do painel">
+          <THead>
+            <TRow>
+              <TH>Pessoa</TH>
+              <TH>Papel</TH>
+              <TH>Status</TH>
+              <TH>Último acesso</TH>
+              <TH>
+                <span className="sr-only">Ações</span>
+              </TH>
+            </TRow>
+          </THead>
+          <TBody>
+            {data.users.map((u) => {
+              const eu = u.id === data.me;
+              const st = STATUS[u.status];
+              const ultimoDono = u.role === 'owner' && donos <= 1;
+              return (
+                <TRow key={u.id}>
+                  <TD label="Pessoa">
+                    {u.name ?? '—'}
+                    {eu ? <span className="ml-1.5 text-2xs text-accent">(você)</span> : null}
+                    <span className="block text-2xs text-muted">{u.email}</span>
+                  </TD>
+                  <TD label="Papel">
+                    <Select
+                      aria-label={`Papel de ${u.email}`}
+                      className="min-h-10 w-auto min-w-36 px-2 py-1 text-xs"
+                      value={u.role}
+                      disabled={ultimoDono || trocarPapel.isPending}
+                      onChange={(e) => trocarPapel.mutate({ id: u.id, role: e.target.value as Role })}
+                    >
+                      <option value="owner">Administrador</option>
+                      <option value="editor">Usuário</option>
+                    </Select>
+                  </TD>
+                  <TD label="Status">
+                    <Badge tom={st.tom}>{st.label}</Badge>
+                    {u.status === 'convite_enviado' && u.inviteExpiresAt ? (
+                      <span className="block text-2xs whitespace-normal text-muted">
+                        vence {quando(u.inviteExpiresAt)}
+                      </span>
+                    ) : null}
+                  </TD>
+                  <TD muted label="Último acesso">
+                    {quando(u.lastLoginAt)}
+                  </TD>
+                  <TD label="Ações">
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      {!u.lastLoginAt ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={reenviar.isPending}
+                          onClick={() => reenviar.mutate(u.id)}
+                        >
+                          <RefreshCw />
+                          Reenviar
+                        </Button>
                       ) : null}
-                    </Td>
-                    <Td muted>{quando(u.lastLoginAt)}</Td>
-                    <Td>
-                      <div className="flex flex-wrap justify-end gap-1.5">
-                        {!u.lastLoginAt ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            loading={reenviar.isPending}
-                            onClick={() => reenviar.mutate(u.id)}
-                          >
-                            <RefreshCw />
-                            Reenviar
-                          </Button>
-                        ) : null}
-                        {!eu ? (
-                          <Button variant="danger" size="sm" disabled={ultimoDono} onClick={() => setExcluir(u)}>
-                            <Trash2 />
-                            Excluir
-                          </Button>
-                        ) : null}
-                      </div>
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        </TableWrap>
+                      {!eu ? (
+                        <Button variant="danger" size="sm" disabled={ultimoDono} onClick={() => setExcluir(u)}>
+                          <Trash2 />
+                          Excluir
+                        </Button>
+                      ) : null}
+                    </div>
+                  </TD>
+                </TRow>
+              );
+            })}
+          </TBody>
+        </Table>
 
         {donos <= 1 ? (
           <p className="mt-4 text-2xs text-muted">
@@ -190,7 +183,7 @@ export function TelaUsuarios() {
             pessoa antes, se precisar.
           </p>
         ) : null}
-      </Card>
+      </Surface>
 
       {/* ------------------------------------------------------ Convite --- */}
       <Dialog open={convite} onOpenChange={setConvite}>

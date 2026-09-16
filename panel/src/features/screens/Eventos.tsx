@@ -10,20 +10,9 @@ import { Segmented } from '@/components/ui/metrics';
 import { Button } from '@/components/ui/button';
 import { Field, Select } from '@/components/ui/form';
 import { JsonBlock } from '@/components/ui/json';
-import {
-  Badge,
-  Callout,
-  Card,
-  CardTitle,
-  Divider,
-  Empty,
-  ErrorState,
-  Loading,
-  Table,
-  TableWrap,
-  Td,
-  Th,
-} from '@/components/ui/layout';
+import { Badge, Callout, Divider, Empty, ErrorState, Loading } from '@/components/ui/layout';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
+import { Table, TBody, TD, TH, THead, TRow } from '@/components/ui/table';
 import { chaves } from '../hooks';
 import { OriginBadge } from '@/components/ui/origin';
 
@@ -270,32 +259,34 @@ function DetalheEvento({ id }: { id: string }) {
               Nenhuma entrega registrada — não há webhook ativo assinando este evento.
             </p>
           ) : (
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Webhook</Th>
-                    <Th num>HTTP</Th>
-                    <Th num>Tentativa</Th>
-                    <Th>Quando</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deliveries.map((d) => (
-                    <tr key={d.id}>
-                      <Td>{d.webhookName}</Td>
-                      <Td num>
-                        <Badge tom={d.deliveredAt ? 'paid' : 'danger'}>
-                          {d.statusCode ?? 'sem resposta'}
-                        </Badge>
-                      </Td>
-                      <Td num>{d.attempt}</Td>
-                      <Td muted>{quando(d.deliveredAt ?? d.createdAt)}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
+            <Table stackBelow="sm" caption="Entregas deste evento nos webhooks">
+              <THead>
+                <TRow>
+                  <TH>Webhook</TH>
+                  <TH num>HTTP</TH>
+                  <TH num>Tentativa</TH>
+                  <TH>Quando</TH>
+                </TRow>
+              </THead>
+              <TBody>
+                {deliveries.map((d) => (
+                  <TRow key={d.id}>
+                    <TD label="Webhook">{d.webhookName}</TD>
+                    <TD num label="HTTP">
+                      <Badge tom={d.deliveredAt ? 'paid' : 'danger'}>
+                        {d.statusCode ?? 'sem resposta'}
+                      </Badge>
+                    </TD>
+                    <TD num label="Tentativa">
+                      {d.attempt}
+                    </TD>
+                    <TD muted label="Quando">
+                      {quando(d.deliveredAt ?? d.createdAt)}
+                    </TD>
+                  </TRow>
+                ))}
+              </TBody>
+            </Table>
           )}
         </div>
       ) : (
@@ -413,65 +404,69 @@ export function TelaEventos() {
         />
       </div>
 
-      <Card wide>
-        <CardTitle
+      <Surface as="section" className="mb-5">
+        <SurfaceHeader
           title="Funil"
           hint="Sessões conta pessoas distintas; eventos conta disparos. A porcentagem é sobre as visitas do período — uma pessoa que recarrega a página cinco vezes é uma visita, não cinco."
         />
-        <TableWrap>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Etapa</Th>
-                <Th num>Sessões</Th>
-                <Th num>Eventos</Th>
-                <Th num>% das visitas</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.funnel.map((step) => (
-                <tr key={step.event}>
-                  <Td>{step.label}</Td>
-                  <Td num>{num(step.uniques)}</Td>
-                  <Td num muted>
-                    {num(step.total)}
-                  </Td>
-                  <Td num>{pct(step.rate)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        </TableWrap>
-      </Card>
+        <Table sticky stackBelow="sm" caption="Funil do período">
+          <THead>
+            <TRow>
+              <TH>Etapa</TH>
+              <TH num>Sessões</TH>
+              <TH num>Eventos</TH>
+              <TH num>% das visitas</TH>
+            </TRow>
+          </THead>
+          <TBody>
+            {s.funnel.map((step) => (
+              <TRow key={step.event}>
+                <TD label="Etapa">{step.label}</TD>
+                <TD num label="Sessões">
+                  {num(step.uniques)}
+                </TD>
+                <TD num muted label="Eventos">
+                  {num(step.total)}
+                </TD>
+                <TD num label="% das visitas">
+                  {pct(step.rate)}
+                </TD>
+              </TRow>
+            ))}
+          </TBody>
+        </Table>
+      </Surface>
 
-      <Card wide>
-        <CardTitle title="Origem do tráfego" hint="Sessões distintas que abriram a página, por utm_source." />
+      <Surface as="section" className="mb-5">
+        <SurfaceHeader title="Origem do tráfego" hint="Sessões distintas que abriram a página, por utm_source." />
         {s.sources.length === 0 ? (
           <Empty>Nenhuma visita registrada no período.</Empty>
         ) : (
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Origem</Th>
-                  <Th num>Sessões</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {s.sources.map((src) => (
-                  <tr key={src.source}>
-                    <Td><OriginBadge source={src.source} /></Td>
-                    <Td num>{num(src.sessions)}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </TableWrap>
+          <Table sticky stackBelow="sm" caption="Sessões por origem">
+            <THead>
+              <TRow>
+                <TH>Origem</TH>
+                <TH num>Sessões</TH>
+              </TRow>
+            </THead>
+            <TBody>
+              {s.sources.map((src) => (
+                <TRow key={src.source}>
+                  <TD label="Origem">
+                    <OriginBadge source={src.source} />
+                  </TD>
+                  <TD num label="Sessões">
+                    {num(src.sessions)}
+                  </TD>
+                </TRow>
+              ))}
+            </TBody>
+          </Table>
         )}
-      </Card>
+      </Surface>
 
-      <Card wide>
-        <CardTitle
+      <Surface as="section" className="mb-5">
+        <SurfaceHeader
           title="Últimos eventos"
           hint="Abra a seta de uma linha para ver o payload inteiro — de onde veio, campanha, UTMs, IP, aparelho — exatamente como sai no webhook. A sessão aparece cortada de propósito: é tela de depuração, não de identificar visitante."
           action={
@@ -493,101 +488,112 @@ export function TelaEventos() {
           </Empty>
         ) : (
           <>
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Quando</Th>
-                    <Th>Evento</Th>
-                    <Th>Onde clicou</Th>
-                    <Th>Página</Th>
-                    <Th>Origem</Th>
-                    <Th>Sessão</Th>
-                    <Th>
-                      <span className="sr-only">Payload</span>
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itens.map((i) => {
-                    const expandido = aberto === i.id;
-                    const idPainel = `evento-payload-${i.id}`;
-                    return (
-                      <Fragment key={i.id}>
-                        <tr className={expandido ? 'bg-surface-2' : undefined}>
-                          <Td muted>{quando(i.createdAt)}</Td>
-                          <Td>
-                            <code className="text-xs">{i.event}</code>
-                            {ROTULO_EVENTO.has(i.event) ? (
-                              <span className="block text-2xs text-muted">
-                                {ROTULO_EVENTO.get(i.event)}
-                              </span>
-                            ) : null}
-                            {falhouEnvio(i.forwarded) ? (
-                              <Badge tom="danger" className="mt-1">envio falhou</Badge>
-                            ) : null}
-                          </Td>
-                          {/* Responde "onde foi que o lead clicou" sem sair
-                              da lista. Vazio na maioria das linhas de
-                              propósito: só clique tem botão e seção. */}
-                          <Td>
-                            {i.clickLabel ?? i.cta ?? '—'}
-                            {i.clickSection ? (
-                              <span className="block text-2xs text-muted">{i.clickSection}</span>
-                            ) : null}
-                          </Td>
-                          <Td muted>{i.page ?? '—'}</Td>
-                          <Td>
-                            <OriginBadge source={i.utm?.utm_source} />
-                            {!i.utm?.utm_source && i.referrer ? (
-                              <span className="block text-2xs text-muted" title={i.referrer}>
-                                Referência disponível · sem UTM
-                              </span>
-                            ) : null}
-                          </Td>
-                          <Td muted>{i.sessionId ?? '—'}</Td>
-                          <Td className="w-px pr-0 text-right">
-                            {/* `<button>` de verdade: Enter, espaço e foco
-                                vêm de graça. Um `<div onClick>` aqui seria
-                                invisível para quem navega por teclado. */}
-                            <button
-                              type="button"
-                              onClick={() => setAberto(expandido ? null : i.id)}
-                              aria-expanded={expandido}
-                              aria-controls={idPainel}
-                              className="grid size-11 place-items-center rounded-sm text-muted hover:bg-surface-3 hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-                            >
-                              <span className="sr-only">
-                                {expandido ? 'Ocultar payload do evento' : 'Ver payload do evento'}
-                              </span>
-                              <ChevronDown
-                                className={cn('size-4 transition-transform', expandido && 'rotate-180')}
-                                aria-hidden
-                              />
-                            </button>
-                          </Td>
+            {/* Sem zebra: a linha do payload aberto entra na contagem de
+                `nth-child` e desalinharia as faixas; o destaque aqui é o
+                `selected` da linha aberta. */}
+            <Table sticky stackBelow="sm" caption="Últimos eventos registrados">
+              <THead>
+                <TRow>
+                  <TH>Quando</TH>
+                  <TH>Evento</TH>
+                  <TH>Onde clicou</TH>
+                  <TH>Página</TH>
+                  <TH>Origem</TH>
+                  <TH>Sessão</TH>
+                  <TH>
+                    <span className="sr-only">Payload</span>
+                  </TH>
+                </TRow>
+              </THead>
+              <TBody zebra={false}>
+                {itens.map((i) => {
+                  const expandido = aberto === i.id;
+                  const idPainel = `evento-payload-${i.id}`;
+                  return (
+                    <Fragment key={i.id}>
+                      <TRow selected={expandido}>
+                        <TD muted label="Quando">
+                          {quando(i.createdAt)}
+                        </TD>
+                        <TD label="Evento">
+                          <code className="text-xs">{i.event}</code>
+                          {ROTULO_EVENTO.has(i.event) ? (
+                            <span className="block text-2xs text-muted">
+                              {ROTULO_EVENTO.get(i.event)}
+                            </span>
+                          ) : null}
+                          {falhouEnvio(i.forwarded) ? (
+                            <Badge tom="danger" className="mt-1">envio falhou</Badge>
+                          ) : null}
+                        </TD>
+                        {/* Responde "onde foi que o lead clicou" sem sair
+                            da lista. Vazio na maioria das linhas de
+                            propósito: só clique tem botão e seção. */}
+                        <TD label="Onde clicou">
+                          {i.clickLabel ?? i.cta ?? '—'}
+                          {i.clickSection ? (
+                            <span className="block text-2xs text-muted">{i.clickSection}</span>
+                          ) : null}
+                        </TD>
+                        <TD muted label="Página">
+                          {i.page ?? '—'}
+                        </TD>
+                        <TD label="Origem">
+                          <OriginBadge source={i.utm?.utm_source} />
+                          {!i.utm?.utm_source && i.referrer ? (
+                            <span className="block text-2xs text-muted" title={i.referrer}>
+                              Referência disponível · sem UTM
+                            </span>
+                          ) : null}
+                        </TD>
+                        <TD muted label="Sessão">
+                          {i.sessionId ?? '—'}
+                        </TD>
+                        <TD label="Payload" className="w-px pr-0 text-right">
+                          {/* `<button>` de verdade: Enter, espaço e foco
+                              vêm de graça. Um `<div onClick>` aqui seria
+                              invisível para quem navega por teclado. */}
+                          <button
+                            type="button"
+                            onClick={() => setAberto(expandido ? null : i.id)}
+                            aria-expanded={expandido}
+                            aria-controls={idPainel}
+                            className="grid size-11 place-items-center rounded-sm text-muted hover:bg-surface-3 hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                          >
+                            <span className="sr-only">
+                              {expandido ? 'Ocultar payload do evento' : 'Ver payload do evento'}
+                            </span>
+                            <ChevronDown
+                              className={cn('size-4 transition-transform', expandido && 'rotate-180')}
+                              aria-hidden
+                            />
+                          </button>
+                        </TD>
+                      </TRow>
+                      {expandido ? (
+                        <tr id={idPainel}>
+                          <td colSpan={7} className="border-b border-line bg-surface-2 p-0">
+                            {/* No desktop a tabela é mais larga que a tela
+                                e rola dentro do invólucro: `sticky left-0`
+                                prende o painel na borda visível, e a
+                                largura fica no menor entre a célula e a
+                                janela — sem isso o detalhe nasceria fora
+                                da área visível, à direita. Abaixo de `sm`
+                                a célula vira grade de duas colunas
+                                (`.cv-table-stack`): `col-span-2` faz o
+                                painel ocupar a linha inteira em vez de
+                                espremer-se na coluna do valor. */}
+                            <div className="sticky left-0 col-span-2 w-[min(100%,calc(100vw-3rem))] min-w-0 p-3 sm:p-4">
+                              <DetalheEvento id={i.id} />
+                            </div>
+                          </td>
                         </tr>
-                        {expandido ? (
-                          <tr id={idPainel}>
-                            <td colSpan={7} className="border-b border-line bg-surface-2 p-0">
-                              {/* A tabela é mais larga que a tela no celular
-                                  e rola dentro do `TableWrap`. `sticky
-                                  left-0` prende o painel na borda visível,
-                                  e a largura fica no menor entre a célula e
-                                  a janela — sem isso o detalhe nasceria
-                                  fora da área visível, à direita. */}
-                              <div className="sticky left-0 w-[min(100%,calc(100vw-3rem))] min-w-0 p-3 sm:p-4">
-                                <DetalheEvento id={i.id} />
-                              </div>
-                            </td>
-                          </tr>
-                        ) : null}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            </TableWrap>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </TBody>
+            </Table>
 
             {lista.hasNextPage ? (
               <div className="mt-4 flex justify-center">
@@ -606,7 +612,7 @@ export function TelaEventos() {
             )}
           </>
         )}
-      </Card>
+      </Surface>
     </>
   );
 }

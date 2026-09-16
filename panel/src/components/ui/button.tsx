@@ -20,9 +20,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-accent-ink hover:bg-accent-hover active:translate-y-px',
+        // `cv-btn-primary` (app.css): brilho que desliza no hover via
+        // `::after` — pseudo-elemento, não um nó a mais, então o `asChild`
+        // continua com um único filho (armadilha 89). Afunda 1px no clique,
+        // ganha `shadow-glow-accent` no hover; nada anima em repouso.
+        primary: 'cv-btn-primary bg-accent text-accent-ink hover:bg-accent-hover',
         ghost:
-          'border border-line-strong bg-transparent font-semibold text-ink ' +
+          'cv-btn-ghost border border-line-strong bg-transparent font-semibold text-ink ' +
           'hover:border-accent hover:bg-surface-2 hover:text-accent',
         danger:
           'border border-danger/45 bg-transparent font-semibold text-danger ' +
@@ -53,7 +57,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { className, variant, size, block, asChild, loading, children, disabled, type, ...props },
   ref,
 ) {
-  const classes = cn(buttonVariants({ variant, size, block }), className);
+  // O brilho de carregando (`cv-shimmer`) só existe enquanto `loading`:
+  // é a única animação contínua do botão e nunca roda em repouso.
+  const classes = cn(buttonVariants({ variant, size, block }), loading && 'cv-btn-loading', className);
 
   /**
    * `asChild` passa exatamente um filho — e nada mais.

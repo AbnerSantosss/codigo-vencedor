@@ -5,18 +5,9 @@ import { api, descreverErro, ehSessaoExpirada } from '@/lib/api';
 import { brl, haQuantoTempo, num, quando } from '@/lib/format';
 import type { RecoveryCheckoutRow, RecoveryPixRow, RecoveryResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import {
-  Badge,
-  Card,
-  CardTitle,
-  Empty,
-  ErrorState,
-  Loading,
-  Table,
-  TableWrap,
-  Td,
-  Th,
-} from '@/components/ui/layout';
+import { Badge, Card, Empty, ErrorState, Loading } from '@/components/ui/layout';
+import { SurfaceHeader } from '@/components/ui/surface';
+import { Table, TBody, TD, TH, THead, TRow } from '@/components/ui/table';
 import { Kpi, KpiGrid, Segmented } from '@/components/ui/metrics';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,6 +28,9 @@ const PERIODOS = [
   { value: 30, label: '30 dias' },
   { value: 90, label: '90 dias' },
 ];
+
+const LINHA_CLICAVEL =
+  'cursor-pointer hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent';
 
 function MarcaEmail({ recovery }: { recovery: RecoveryCheckoutRow['recovery'] }) {
   if (!recovery) return <Badge>não enviado</Badge>;
@@ -120,105 +114,111 @@ export function TelaRecuperacao() {
       </KpiGrid>
 
       <Tabs defaultValue="checkout">
-        <TabsList>
+        <TabsList variant="underline">
           <TabsTrigger value="checkout">Não geraram o Pix ({data.checkout.length})</TabsTrigger>
           <TabsTrigger value="pix">Geraram e não pagaram ({data.pix.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="checkout">
           <Card wide>
-            <CardTitle
+            <SurfaceHeader
               title="Preencheram o formulário e pararam ali"
               hint="O rascunho é gravado quando a pessoa sai do campo de e-mail — por isso existe nome mesmo sem pedido."
             />
             {data.checkout.length === 0 ? (
               <Empty>Ninguém abandonou o checkout no período.</Empty>
             ) : (
-              <TableWrap>
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th>Quando</Th>
-                      <Th>Pessoa</Th>
-                      <Th>Origem</Th>
-                      <Th>E-mail de recuperação</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.checkout.map((r) => (
-                      <tr
-                        key={r.id}
-                        tabIndex={0}
-                        onClick={() => setAberto({ tipo: 'checkout', row: r })}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') setAberto({ tipo: 'checkout', row: r });
-                        }}
-                        className="cursor-pointer hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-                      >
-                        <Td muted>{haQuantoTempo(r.lastSeenAt)}</Td>
-                        <Td>
-                          {r.nome}
-                          <span className="block text-2xs text-muted">{r.email}</span>
-                        </Td>
-                        <Td><OriginBadge source={r.utm?.utm_source} /></Td>
-                        <Td>
-                          <MarcaEmail recovery={r.recovery} />
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </TableWrap>
+              <Table stackBelow="sm" caption="Checkouts abandonados antes de gerar o Pix">
+                <THead>
+                  <TRow>
+                    <TH>Quando</TH>
+                    <TH>Pessoa</TH>
+                    <TH>Origem</TH>
+                    <TH>E-mail de recuperação</TH>
+                  </TRow>
+                </THead>
+                <TBody>
+                  {data.checkout.map((r) => (
+                    <TRow
+                      key={r.id}
+                      tabIndex={0}
+                      onClick={() => setAberto({ tipo: 'checkout', row: r })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') setAberto({ tipo: 'checkout', row: r });
+                      }}
+                      className={LINHA_CLICAVEL}
+                    >
+                      <TD muted label="Quando">
+                        {haQuantoTempo(r.lastSeenAt)}
+                      </TD>
+                      <TD label="Pessoa">
+                        {r.nome}
+                        <span className="block text-2xs text-muted">{r.email}</span>
+                      </TD>
+                      <TD label="Origem">
+                        <OriginBadge source={r.utm?.utm_source} />
+                      </TD>
+                      <TD label="E-mail de recuperação">
+                        <MarcaEmail recovery={r.recovery} />
+                      </TD>
+                    </TRow>
+                  ))}
+                </TBody>
+              </Table>
             )}
           </Card>
         </TabsContent>
 
         <TabsContent value="pix">
           <Card wide>
-            <CardTitle
+            <SurfaceHeader
               title="Pix gerado que expirou sem pagamento"
               hint="O e-mail leva um link para gerar outro Pix, com utm_medium=recuperacao — é assim que a venda recuperada é identificada."
             />
             {data.pix.length === 0 ? (
               <Empty>Nenhum Pix expirou no período.</Empty>
             ) : (
-              <TableWrap>
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th>Quando</Th>
-                      <Th>Pessoa</Th>
-                      <Th>Origem</Th>
-                      <Th num>Valor</Th>
-                      <Th>E-mail de recuperação</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.pix.map((r) => (
-                      <tr
-                        key={r.id}
-                        tabIndex={0}
-                        onClick={() => setAberto({ tipo: 'pix', row: r })}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') setAberto({ tipo: 'pix', row: r });
-                        }}
-                        className="cursor-pointer hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-                      >
-                        <Td muted>{haQuantoTempo(r.generatedAt)}</Td>
-                        <Td>
-                          {r.nome}
-                          <span className="block text-2xs text-muted">{r.email}</span>
-                        </Td>
-                        <Td><OriginBadge source={r.utm?.utm_source} /></Td>
-                        <Td num>{brl(r.amountCents)}</Td>
-                        <Td>
-                          <MarcaEmail recovery={r.recovery} />
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </TableWrap>
+              <Table stackBelow="sm" caption="Pix gerados que expiraram sem pagamento">
+                <THead>
+                  <TRow>
+                    <TH>Quando</TH>
+                    <TH>Pessoa</TH>
+                    <TH>Origem</TH>
+                    <TH num>Valor</TH>
+                    <TH>E-mail de recuperação</TH>
+                  </TRow>
+                </THead>
+                <TBody>
+                  {data.pix.map((r) => (
+                    <TRow
+                      key={r.id}
+                      tabIndex={0}
+                      onClick={() => setAberto({ tipo: 'pix', row: r })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') setAberto({ tipo: 'pix', row: r });
+                      }}
+                      className={LINHA_CLICAVEL}
+                    >
+                      <TD muted label="Quando">
+                        {haQuantoTempo(r.generatedAt)}
+                      </TD>
+                      <TD label="Pessoa">
+                        {r.nome}
+                        <span className="block text-2xs text-muted">{r.email}</span>
+                      </TD>
+                      <TD label="Origem">
+                        <OriginBadge source={r.utm?.utm_source} />
+                      </TD>
+                      <TD num label="Valor">
+                        {brl(r.amountCents)}
+                      </TD>
+                      <TD label="E-mail de recuperação">
+                        <MarcaEmail recovery={r.recovery} />
+                      </TD>
+                    </TRow>
+                  ))}
+                </TBody>
+              </Table>
             )}
           </Card>
         </TabsContent>

@@ -15,9 +15,10 @@ import {
   secretVazio,
   type SecretState,
 } from '@/components/ui/form';
-import { Badge, Callout, Card, CardTitle, ErrorState, GroupTitle, Loading } from '@/components/ui/layout';
+import { Badge, Callout, Card, ErrorState, GroupTitle, Loading } from '@/components/ui/layout';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
+import { SaveBar } from '@/components/ui/save-bar';
 import { chaves, useAcao } from '../hooks';
-import { CardForm } from '../SecaoConfig';
 
 /* ==========================================================================
    Gateway de pagamento
@@ -203,26 +204,36 @@ function Formulario({ inicial }: { inicial: GatewayResponse }) {
 
   const provedorAtivo = PROVEDORES.find((p) => p.id === ativo)!;
 
+  // Sujo = algum campo diferente do que veio do servidor, ou uma credencial
+  // digitada/marcada para apagar. Campo de segredo vazio não conta: ele
+  // preserva o valor gravado (armadilha 28).
+  const sujo =
+    ativo !== inicial.gatewayActive ||
+    modo !== inicial.gatewayMode ||
+    (Number(expira) || 30) !== inicial.pixExpiresMin ||
+    coletarSecrets(segredos) !== undefined;
+
   return (
     <>
-      <CardForm
-        title="Gateway de pagamento"
-        hint="As credenciais são gravadas cifradas (AES-256-GCM) e nunca voltam para esta tela — o servidor só informa se cada uma existe. Campo em branco mantém o valor atual."
-        salvando={salvar.isPending}
-        onSubmit={() =>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
           salvar.mutate({
             gatewayActive: ativo,
             gatewayMode: modo,
             pixExpiresMin: Number(expira) || 30,
             secrets: coletarSecrets(segredos),
-          })
-        }
-        extra={
-          <Button variant="ghost" loading={testar.isPending} onClick={() => testar.mutate()}>
-            Testar conexão
-          </Button>
-        }
+          });
+        }}
       >
+      <Surface as="section" tone="base" className="mb-5 max-w-[52rem]">
+        <SurfaceHeader
+          icon={<CreditCard />}
+          title="Gateway de pagamento"
+          hint="As credenciais são gravadas cifradas (AES-256-GCM) e nunca voltam para esta tela — o servidor só informa se cada uma existe. Campo em branco mantém o valor atual."
+          action={sujo ? <Badge tom="pending">alterações não salvas</Badge> : null}
+        />
+        <div className="grid gap-4">
         <div>
           <GroupTitle>Quem processa a venda</GroupTitle>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -321,10 +332,25 @@ function Formulario({ inicial }: { inicial: GatewayResponse }) {
             ) : null}
           </Callout>
         ) : null}
-      </CardForm>
+        </div>
+
+        <SaveBar
+          submit
+          dirty={sujo}
+          saving={salvar.isPending}
+          saveLabel="Salvar gateway"
+          message={sujo ? 'Alterações não salvas — as credenciais são cifradas ao gravar.' : 'Gateway salvo.'}
+          extra={
+            <Button variant="ghost" loading={testar.isPending} onClick={() => testar.mutate()}>
+              Testar conexão
+            </Button>
+          }
+        />
+      </Surface>
+      </form>
 
       <Card>
-        <CardTitle
+        <SurfaceHeader
           title="Como a cobrança é escolhida"
           hint="Isto não é configuração: é o que o servidor faz, e ajuda a entender por que um Pix saiu simulado."
         />

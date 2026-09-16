@@ -13,19 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Field, FieldGrid, Input, Select, ToggleRow } from '@/components/ui/form';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Segmented } from '@/components/ui/metrics';
-import {
-  Badge,
-  Callout,
-  Card,
-  CardTitle,
-  Empty,
-  ErrorState,
-  Loading,
-  Table,
-  TableWrap,
-  Td,
-  Th,
-} from '@/components/ui/layout';
+import { Badge, Callout, Empty, ErrorState, Loading } from '@/components/ui/layout';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
+import { Table, TBody, TD, TH, THead, TRow } from '@/components/ui/table';
 import { chaves, useAcao } from '../hooks';
 
 /* ==========================================================================
@@ -390,9 +380,10 @@ export function TelaCupons() {
         </Callout>
       ) : null}
 
-      <Card wide>
-        <CardTitle
+      <Surface as="section" className="mb-5">
+        <SurfaceHeader
           title="Cupons"
+          icon={<Ticket />}
           hint={`O cliente digita o código no checkout. O preço de hoje é ${brl(d.priceCents)} e nenhum cupom baixa de ${brl(Math.min(d.pixMinCents, d.priceCents))} — o mínimo do Pix, configurado na aba Checkout.`}
           action={
             <Button
@@ -413,95 +404,95 @@ export function TelaCupons() {
             limite de 1 uso — ele cobra o mínimo do Pix e se esgota sozinho.
           </Empty>
         ) : (
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Código</Th>
-                  <Th>Desconto</Th>
-                  <Th num>Cliente paga</Th>
-                  <Th num>Usos</Th>
-                  <Th>Situação</Th>
-                  <Th>Validade</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody>
-                {d.coupons.map((c) => {
-                  const st = situacao(c);
-                  return (
-                    <tr key={c.id}>
-                      <Td>
-                        <span className="font-mono font-bold tracking-wide">{c.code}</span>
-                        {c.note ? <span className="block text-2xs text-muted">{c.note}</span> : null}
-                      </Td>
-                      <Td>
-                        {c.kind === 'percent' ? `${c.value}%` : brl(c.value)}
-                        <span className="block text-2xs text-muted">− {brl(c.preview.discountCents)}</span>
-                      </Td>
-                      <Td num>
-                        {brl(c.preview.amountCents)}
-                        {c.preview.limitadoPeloMinimo ? (
-                          <span className="block text-2xs text-warn">no mínimo do Pix</span>
-                        ) : null}
-                      </Td>
-                      <Td num>
-                        {num(c.usedCount)}
-                        <span className="block text-2xs text-muted">
-                          {c.maxUses === null ? 'ilimitado' : `de ${num(c.maxUses)}`}
-                        </span>
-                      </Td>
-                      <Td>
-                        <Badge tom={st.tom}>{st.label}</Badge>
-                      </Td>
-                      <Td muted>
-                        <span className="block text-2xs">
-                          {c.startsAt ? `a partir de ${quando(c.startsAt)}` : 'vale desde já'}
-                        </span>
-                        <span className="block text-2xs">
-                          {c.endsAt ? `até ${quando(c.endsAt)}` : 'sem prazo'}
-                        </span>
-                      </Td>
-                      <Td>
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setRascunho(rascunhoDe(c));
-                              setEditando(c);
-                            }}
-                          >
-                            <Pencil />
-                            Editar
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            loading={alterar.isPending}
-                            onClick={() => alterar.mutate({ id: c.id, corpo: { active: !c.active } })}
-                          >
-                            <Power />
-                            {c.active ? 'Desativar' : 'Ativar'}
-                          </Button>
-                          <Button variant="danger" size="sm" onClick={() => setExcluindo(c)}>
-                            <Trash2 />
-                            Excluir
-                          </Button>
-                        </div>
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
-          </TableWrap>
+          <Table sticky stackBelow="sm" caption="Cupons cadastrados">
+            <THead>
+              <TRow>
+                <TH>Código</TH>
+                <TH>Desconto</TH>
+                <TH num>Cliente paga</TH>
+                <TH num>Usos</TH>
+                <TH>Situação</TH>
+                <TH>Validade</TH>
+                <TH>
+                  <span className="sr-only">Ações</span>
+                </TH>
+              </TRow>
+            </THead>
+            <TBody>
+              {d.coupons.map((c) => {
+                const st = situacao(c);
+                return (
+                  <TRow key={c.id}>
+                    <TD label="Código">
+                      <span className="font-mono font-bold tracking-wide">{c.code}</span>
+                      {c.note ? <span className="block text-2xs text-muted">{c.note}</span> : null}
+                    </TD>
+                    <TD label="Desconto">
+                      {c.kind === 'percent' ? `${c.value}%` : brl(c.value)}
+                      <span className="block text-2xs text-muted">− {brl(c.preview.discountCents)}</span>
+                    </TD>
+                    <TD num label="Cliente paga">
+                      {brl(c.preview.amountCents)}
+                      {c.preview.limitadoPeloMinimo ? (
+                        <span className="block text-2xs text-warn">no mínimo do Pix</span>
+                      ) : null}
+                    </TD>
+                    <TD num label="Usos">
+                      {num(c.usedCount)}
+                      <span className="block text-2xs text-muted">
+                        {c.maxUses === null ? 'ilimitado' : `de ${num(c.maxUses)}`}
+                      </span>
+                    </TD>
+                    <TD label="Situação">
+                      <Badge tom={st.tom}>{st.label}</Badge>
+                    </TD>
+                    <TD muted label="Validade">
+                      <span className="block text-2xs">
+                        {c.startsAt ? `a partir de ${quando(c.startsAt)}` : 'vale desde já'}
+                      </span>
+                      <span className="block text-2xs">
+                        {c.endsAt ? `até ${quando(c.endsAt)}` : 'sem prazo'}
+                      </span>
+                    </TD>
+                    <TD label="Ações">
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setRascunho(rascunhoDe(c));
+                            setEditando(c);
+                          }}
+                        >
+                          <Pencil />
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={alterar.isPending}
+                          onClick={() => alterar.mutate({ id: c.id, corpo: { active: !c.active } })}
+                        >
+                          <Power />
+                          {c.active ? 'Desativar' : 'Ativar'}
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => setExcluindo(c)}>
+                          <Trash2 />
+                          Excluir
+                        </Button>
+                      </div>
+                    </TD>
+                  </TRow>
+                );
+              })}
+            </TBody>
+          </Table>
         )}
-      </Card>
+      </Surface>
 
       {/* --------------------------------------------------- Desempenho --- */}
-      <Card wide>
-        <CardTitle
+      <Surface as="section" className="mb-5">
+        <SurfaceHeader
           title="O que cada cupom vendeu"
           hint="“Pedidos” são Pix gerados com o cupom; “pagos” são os que entraram. A diferença entre os dois é o que separa um cupom que atrai de um cupom que converte."
           action={<Segmented value={dias} options={PERIODOS} onChange={setDias} label="Período" />}
@@ -513,36 +504,40 @@ export function TelaCupons() {
         ) : uso.data.items.length === 0 ? (
           <Empty>Nenhum pedido feito com cupom no período.</Empty>
         ) : (
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Cupom</Th>
-                  <Th num>Pedidos</Th>
-                  <Th num>Pagos</Th>
-                  <Th num>Receita</Th>
-                  <Th num>Desconto dado</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {uso.data.items.map((i) => (
-                  <tr key={i.code}>
-                    <Td>
-                      <span className="font-mono font-bold tracking-wide">{i.code}</span>
-                    </Td>
-                    <Td num>{num(i.pedidos)}</Td>
-                    <Td num>{num(i.pagos)}</Td>
-                    <Td num>{brl(i.receitaCents)}</Td>
-                    <Td num muted>
-                      {brl(i.descontoCents)}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </TableWrap>
+          <Table sticky stackBelow="sm" caption="Vendas por cupom no período">
+            <THead>
+              <TRow>
+                <TH>Cupom</TH>
+                <TH num>Pedidos</TH>
+                <TH num>Pagos</TH>
+                <TH num>Receita</TH>
+                <TH num>Desconto dado</TH>
+              </TRow>
+            </THead>
+            <TBody>
+              {uso.data.items.map((i) => (
+                <TRow key={i.code}>
+                  <TD label="Cupom">
+                    <span className="font-mono font-bold tracking-wide">{i.code}</span>
+                  </TD>
+                  <TD num label="Pedidos">
+                    {num(i.pedidos)}
+                  </TD>
+                  <TD num label="Pagos">
+                    {num(i.pagos)}
+                  </TD>
+                  <TD num label="Receita">
+                    {brl(i.receitaCents)}
+                  </TD>
+                  <TD num muted label="Desconto dado">
+                    {brl(i.descontoCents)}
+                  </TD>
+                </TRow>
+              ))}
+            </TBody>
+          </Table>
         )}
-      </Card>
+      </Surface>
 
       {/* ------------------------------------------------------- Criar --- */}
       <Dialog open={criando} onOpenChange={setCriando}>

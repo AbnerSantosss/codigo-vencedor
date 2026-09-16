@@ -15,6 +15,7 @@ import { TelaRastreamento } from './screens/Rastreamento';
 import { TelaRecuperacao } from './screens/Recuperacao';
 import { TelaUsuarios } from './screens/Usuarios';
 import { TelaWebhooks } from './screens/Webhooks';
+import { TelaVitrine } from './screens/Vitrine';
 
 export interface PropsDeTela {
   me: Me | null;
@@ -44,4 +45,7 @@ export const TELA_COMPONENTES: Record<string, React.ComponentType<PropsDeTela>> 
   webhooks: TelaWebhooks,
   usuarios: TelaUsuarios,
   conta: TelaConta,
+  // Vitrine do design system: só em desenvolvimento. O Vite troca
+  // `import.meta.env.DEV` por `false` no build e o Rollup descarta o módulo.
+  ...(import.meta.env.DEV ? { vitrine: TelaVitrine } : {}),
 };

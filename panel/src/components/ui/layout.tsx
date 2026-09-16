@@ -1,10 +1,16 @@
 import { AlertTriangle, CheckCircle2, Info, Loader2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { Surface } from './surface';
 
 /* ------------------------------------------------------------------ *
  * Cartão
  * ------------------------------------------------------------------ */
 
+/**
+ * `Card` é um invólucro fino sobre `Surface tone="base"`: mesma assinatura
+ * de sempre (className, children, wide), visual novo (gradiente + linha de
+ * luz). As 17 telas continuam funcionando sem mudar uma linha.
+ */
 export function Card({
   className,
   children,
@@ -16,22 +22,24 @@ export function Card({
   wide?: boolean;
 }) {
   return (
-    <section
+    <Surface
+      as="section"
+      tone="base"
       className={cn(
-        // `min-w-0` não é enfeite: dentro de uma grade, um item tem
-        // `min-width: auto` e cresce até caber o conteúdo mais largo. Uma
-        // tabela com `white-space: nowrap` dentro do cartão empurrava o
-        // cartão para 496px numa tela de 390px, e a PÁGINA inteira rolava
-        // para o lado — o defeito que o dono chamava de "elementos
-        // ultrapassando a tela". Com `min-w-0` o cartão encolhe e quem rola
-        // é a tabela, dentro do próprio invólucro.
-        'mb-5 min-w-0 rounded-lg border border-line bg-surface p-4.5 shadow-card sm:p-6',
+        // `min-w-0` (já em Surface) não é enfeite: dentro de uma grade, um
+        // item tem `min-width: auto` e cresce até caber o conteúdo mais
+        // largo. Uma tabela com `white-space: nowrap` dentro do cartão
+        // empurrava o cartão para 496px numa tela de 390px, e a PÁGINA
+        // inteira rolava para o lado — o defeito que o dono chamava de
+        // "elementos ultrapassando a tela". Com `min-w-0` o cartão encolhe
+        // e quem rola é a tabela, dentro do próprio invólucro.
+        'mb-5',
         wide ? 'max-w-none' : 'max-w-[52rem]',
         className,
       )}
     >
       {children}
-    </section>
+    </Surface>
   );
 }
 
@@ -100,7 +108,7 @@ export function Callout({
   return (
     <div
       role={tom === 'err' ? 'alert' : 'status'}
-      className={cn('mb-4 flex gap-2.5 rounded-sm border border-l-[3px] p-3 text-sm', cls, className)}
+      className={cn('mb-4 flex gap-2.5 rounded-sm border border-l-[3px] p-3 text-sm inset-shadow-hi', cls, className)}
     >
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0 [&_strong]:font-bold">{children}</div>
@@ -133,7 +141,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-2xs font-bold whitespace-nowrap',
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-2xs font-bold whitespace-nowrap inset-shadow-hi',
         badgeTons[tom],
         className,
       )}

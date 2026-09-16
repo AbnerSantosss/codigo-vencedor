@@ -1,5 +1,6 @@
 import { Globe, Search, Mail } from 'lucide-react';
 import { siMeta, siFacebook, siInstagram, siGoogle, siYoutube, siTiktok, siX, siWhatsapp, siKuaishou, type SimpleIcon } from 'simple-icons';
+import { cn } from '@/lib/cn';
 
 function BrandIcon({ icon }: { icon: SimpleIcon }) { return <svg viewBox="0 0 24 24" fill="currentColor"><path d={icon.path} /></svg>; }
 
@@ -24,15 +25,26 @@ export function identifyOrigin(source?: string | null) {
   return { key: 'other', label: raw };
 }
 
+/* A cor da marca fica só no ícone e vem dos tokens semânticos: azul (`info`)
+   para Meta/Facebook, rosa/vermelho (`danger`) para Instagram e YouTube.
+   O texto segue em `ink-2` — o rótulo é o que comunica, não a cor. */
+const corDoIcone: Record<string, string> = {
+  meta: 'text-info',
+  facebook: 'text-info',
+  instagram: 'text-danger',
+  youtube: 'text-danger',
+  whatsapp: 'text-ok',
+};
+
 export function OriginBadge({ source }: { source?: string | null }) {
   const origin = identifyOrigin(source);
-  return <span className={`origin-badge origin-${origin.key}`} title={source ? `Origem registrada: ${source}` : 'Sem utm_source registrada'}>
-    <span className="origin-icons" aria-hidden="true">
+  return <span className="inline-flex max-w-full items-center gap-1.5 text-2xs leading-[1.4] text-ink-2" title={source ? `Origem registrada: ${source}` : 'Sem utm_source registrada'}>
+    <span className={cn('inline-flex shrink-0 items-center gap-0.5 [&_svg]:size-4', corDoIcone[origin.key] ?? 'text-muted')} aria-hidden="true">
       {['meta', 'facebook', 'instagram'].includes(origin.key) ? <BrandIcon icon={siMeta} /> : null}
       {origin.key === 'facebook' ? <BrandIcon icon={siFacebook} /> : origin.key === 'instagram' ? <BrandIcon icon={siInstagram} /> :
         origin.key === 'google' ? <BrandIcon icon={siGoogle} /> : origin.key === 'youtube' ? <BrandIcon icon={siYoutube} /> :
           origin.key === 'tiktok' ? <BrandIcon icon={siTiktok} /> : origin.key === 'x' ? <BrandIcon icon={siX} /> :
             origin.key === 'bing' ? <Search /> : origin.key === 'kwai' ? <BrandIcon icon={siKuaishou} /> : origin.key === 'whatsapp' ? <BrandIcon icon={siWhatsapp} /> : origin.key === 'email' ? <Mail /> : origin.key !== 'meta' ? <Globe /> : null}
-    </span><span>{origin.label}</span>
+    </span><span className="[overflow-wrap:anywhere]">{origin.label}</span>
   </span>;
 }

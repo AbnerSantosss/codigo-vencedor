@@ -1,4 +1,4 @@
-import { forwardRef, useId, useState } from 'react';
+import { Children, cloneElement, forwardRef, isValidElement, useId, useState } from 'react';
 import * as SwitchPrimitive from '@radix-ui/react-switch';
 import { ChevronDown, Eye, EyeOff, KeyRound, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -17,13 +17,29 @@ export interface FieldProps {
   children: React.ReactNode;
 }
 
+/**
+ * Rótulo e campo, pareados de verdade.
+ *
+ * Um `<label>` sem `for` desenha o texto mas não nomeia campo nenhum: o
+ * leitor de tela anuncia "caixa de edição" e o toque no rótulo não foca o
+ * campo — que é o alvo grande que o celular precisa. Quando a tela não passa
+ * `htmlFor`, o próprio `Field` gera o id e o empresta ao único controle que
+ * envolve (o mesmo pareamento que o `SecretInput` já fazia à mão). Se a tela
+ * passar `htmlFor`, nada é tocado: ela já cuidou do par.
+ */
 export function Field({ label, hint, error, htmlFor, className, children }: FieldProps) {
+  const idAuto = useId();
+  const unico = Children.count(children) === 1 ? Children.toArray(children)[0] : null;
+  const alvo =
+    !htmlFor && isValidElement<{ id?: string }>(unico) && unico.props.id === undefined ? unico : null;
+  const idDoRotulo = htmlFor ?? (alvo ? idAuto : undefined);
+
   return (
     <div className={cn('grid min-w-0 gap-1.5', className)}>
-      <label htmlFor={htmlFor} className="text-xs font-semibold text-ink-2">
+      <label htmlFor={idDoRotulo} className="text-xs font-semibold text-ink-2">
         {label}
       </label>
-      {children}
+      {alvo ? cloneElement(alvo, { id: idAuto }) : children}
       {error ? (
         <small className="text-2xs font-semibold text-danger">{error}</small>
       ) : hint ? (

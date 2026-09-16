@@ -15,6 +15,7 @@ import {
   Users,
   Webhook,
   LifeBuoy,
+  Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -160,6 +161,20 @@ export const TELAS: Tela[] = [
     titulo: 'Minha conta',
     sub: 'Seus dados de acesso e a troca de senha.',
   },
+  // Só em desenvolvimento (o build troca `import.meta.env.DEV` por `false`).
+  ...(import.meta.env.DEV
+    ? [
+        {
+          id: 'vitrine',
+          label: 'Vitrine (dev)',
+          grupo: 'Sistema' as const,
+          icone: Sparkles,
+          titulo: 'Vitrine do design system',
+          sub: 'Todos os primitivos da fundação, em todos os estados. Não existe em produção.',
+          ownerOnly: true,
+        },
+      ]
+    : []),
 ];
 
 export const GRUPOS = ['Vendas', 'Landing page', 'Sistema'] as const;

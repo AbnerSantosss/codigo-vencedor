@@ -1,48 +1,13 @@
-import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { StatCard } from './stat-card';
 
 /* ------------------------------------------------------------------ *
  * Seletor de período
  * ------------------------------------------------------------------ */
 
-export function Segmented<T extends string | number>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className="flex gap-0.5 rounded-md border border-line bg-surface p-1"
-    >
-      {options.map((o) => {
-        const ativo = o.value === value;
-        return (
-          <button
-            key={String(o.value)}
-            type="button"
-            role="radio"
-            aria-checked={ativo}
-            onClick={() => onChange(o.value)}
-            className={cn(
-              'min-h-10 rounded-sm px-3.5 text-sm font-semibold md:min-h-9',
-              ativo ? 'bg-accent font-bold text-accent-ink' : 'text-muted hover:bg-surface-2 hover:text-ink',
-            )}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+// A implementação vive em `segmented.tsx` (polegar que desliza, teclado);
+// a assinatura `{ value, options, onChange, label }` continua a mesma.
+export { Segmented, type SegmentedOption } from './segmented';
 
 /* ------------------------------------------------------------------ *
  * Indicador
@@ -59,58 +24,9 @@ export interface KpiProps {
   tom?: 'normal' | 'accent';
 }
 
-export function Kpi({ label, value, delta, deltaText, note, href, tom = 'normal' }: KpiProps) {
-  const corpo = (
-    <div
-      className={cn(
-        'min-w-0 rounded-lg border border-line bg-surface p-4 shadow-card sm:p-5',
-        href && 'transition-colors hover:border-accent hover:bg-surface-2',
-      )}
-    >
-      <div className="mb-2 text-2xs font-bold tracking-wider text-muted uppercase">{label}</div>
-      <div
-        className={cn(
-          'text-2xl leading-tight font-extrabold tracking-tight tabular',
-          tom === 'accent' && 'text-accent',
-        )}
-      >
-        {value}
-      </div>
-      {deltaText || delta !== undefined ? (
-        <div
-          className={cn(
-            'mt-2 flex flex-wrap items-center gap-1 text-xs font-semibold',
-            delta === null || delta === undefined || delta === 0
-              ? 'text-muted'
-              : delta > 0
-                ? 'text-ok'
-                : 'text-danger',
-          )}
-        >
-          {delta !== null && delta !== undefined && delta !== 0 ? (
-            delta > 0 ? (
-              <ArrowUp className="size-3" aria-hidden />
-            ) : (
-              <ArrowDown className="size-3" aria-hidden />
-            )
-          ) : null}
-          {deltaText ? <span>{deltaText}</span> : null}
-          {note ? <span className="font-normal text-muted">{note}</span> : null}
-        </div>
-      ) : note ? (
-        <div className="mt-2 text-xs text-muted">{note}</div>
-      ) : null}
-    </div>
-  );
-
-  if (href) {
-    return (
-      <a href={href} className="block text-inherit no-underline">
-        {corpo}
-      </a>
-    );
-  }
-  return corpo;
+/** Alias fino de `StatCard` — `tom` vira `tone`; o resto passa direto. */
+export function Kpi({ tom = 'normal', ...rest }: KpiProps) {
+  return <StatCard {...rest} tone={tom === 'accent' ? 'accent' : 'neutral'} />;
 }
 
 export function KpiGrid({ children }: { children: React.ReactNode }) {

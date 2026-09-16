@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Hourglass, MessageSquareQuote, Plus, Trash2 } from 'lucide-react';
 import type { Scarcity, SocialProofItem } from '@/lib/types';
 import { Field, FieldGrid, Input, Select, ToggleRow } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
-import { Callout, Card, CardTitle, Divider, GroupTitle } from '@/components/ui/layout';
+import { Badge, Callout, Divider, GroupTitle } from '@/components/ui/layout';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
+import { SaveBar } from '@/components/ui/save-bar';
 import { useToast } from '@/components/ui/toast';
-import { ComConfig, CardForm } from '../SecaoConfig';
+import { ComConfig } from '../SecaoConfig';
 import { useSalvarConfig } from '../hooks';
 
 /**
@@ -131,155 +133,178 @@ function Formulario({ inicial }: { inicial: Scarcity }) {
   const contadorFalso = cd.enabled && cd.mode === 'per_visitor';
   const campanhaSemData = cd.enabled && cd.mode === 'campaign' && !cdEnds;
 
+  // Sujo = o que está digitado difere do que veio do servidor. Compara o
+  // estado cru (não o corpo normalizado) para não acusar mudança em campo
+  // que o dono não tocou.
+  const sujo =
+    JSON.stringify([cd, cdEnds, spots, buyers, bar, sp]) !==
+    JSON.stringify([
+      inicial.countdown,
+      paraCampoLocal(inicial.countdown.endsAt),
+      inicial.spots,
+      inicial.buyers,
+      inicial.bar.enabled,
+      inicial.socialProof,
+    ]);
+
   return (
-    <>
-      <CardForm
-        title="Blocos de escassez"
-        hint="Cada bloco liga e desliga sozinho. Nada aqui depende de outro."
-        salvando={salvar.isPending}
-        onSubmit={submeter}
-      >
-        {contadorFalso ? (
-          <Callout tom="warn">
-            No modo <strong>por visitante</strong> o prazo reinicia para cada pessoa e a oferta não
-            termina de fato. No Brasil, prazo ou vaga inventados são o que o art. 37 do CDC trata
-            como publicidade enganosa — o modo <strong>campanha</strong> e as opções "de verdade"
-            usam dado real.
-          </Callout>
-        ) : null}
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        submeter();
+      }}
+    >
+      <Surface as="section" tone="base" className="mb-5 max-w-[52rem]">
+        <SurfaceHeader
+          icon={<Hourglass />}
+          title="Blocos de escassez"
+          hint="Cada bloco liga e desliga sozinho. Nada aqui depende de outro."
+          action={sujo ? <Badge tom="pending">alterações não salvas</Badge> : null}
+        />
+        <div className="grid gap-4">
+          {contadorFalso ? (
+            <Callout tom="warn">
+              No modo <strong>por visitante</strong> o prazo reinicia para cada pessoa e a oferta não
+              termina de fato. No Brasil, prazo ou vaga inventados são o que o art. 37 do CDC trata
+              como publicidade enganosa — o modo <strong>campanha</strong> e as opções "de verdade"
+              usam dado real.
+            </Callout>
+          ) : null}
 
-        <div>
-          <GroupTitle>Contador</GroupTitle>
-          <div className="grid gap-4">
-            <ToggleRow
-              label="Contador regressivo"
-              hint='A tarja "OFERTA TERMINA EM" e a barra do checkout.'
-              checked={cd.enabled}
-              onChange={(v) => setCd({ ...cd, enabled: v })}
-            />
-            {cd.enabled ? (
-              <FieldGrid>
-                <Field label="Como o contador funciona">
-                  <Select
-                    value={cd.mode}
-                    onChange={(e) => setCd({ ...cd, mode: e.target.value as Scarcity['countdown']['mode'] })}
-                  >
-                    <option value="per_visitor">Por visitante — cada pessoa vê o próprio relógio</option>
-                    <option value="campaign">Campanha — uma data e hora fim iguais para todos</option>
-                  </Select>
-                </Field>
-                {cd.mode === 'per_visitor' ? (
-                  <Field label="Minutos por visitante">
-                    <Input
-                      inputMode="numeric"
-                      value={String(cd.minutes)}
-                      onChange={(e) => setCd({ ...cd, minutes: Number(e.target.value.replace(/\D/g, '')) || 0 })}
-                    />
+          <div>
+            <GroupTitle>Contador</GroupTitle>
+            <div className="grid gap-4">
+              <ToggleRow
+                label="Contador regressivo"
+                hint='A tarja "OFERTA TERMINA EM" e a barra do checkout.'
+                checked={cd.enabled}
+                onChange={(v) => setCd({ ...cd, enabled: v })}
+              />
+              {cd.enabled ? (
+                <FieldGrid>
+                  <Field label="Como o contador funciona">
+                    <Select
+                      value={cd.mode}
+                      onChange={(e) => setCd({ ...cd, mode: e.target.value as Scarcity['countdown']['mode'] })}
+                    >
+                      <option value="per_visitor">Por visitante — cada pessoa vê o próprio relógio</option>
+                      <option value="campaign">Campanha — uma data e hora fim iguais para todos</option>
+                    </Select>
                   </Field>
-                ) : (
+                  {cd.mode === 'per_visitor' ? (
+                    <Field label="Minutos por visitante">
+                      <Input
+                        inputMode="numeric"
+                        value={String(cd.minutes)}
+                        onChange={(e) => setCd({ ...cd, minutes: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+                      />
+                    </Field>
+                  ) : (
+                    <Field
+                      label="Termina em"
+                      error={campanhaSemData ? 'Sem data, a campanha volta para o modo por visitante.' : null}
+                    >
+                      <Input
+                        type="datetime-local"
+                        value={cdEnds}
+                        onChange={(e) => setCdEnds(e.target.value)}
+                        aria-invalid={campanhaSemData || undefined}
+                      />
+                    </Field>
+                  )}
+                </FieldGrid>
+              ) : null}
+            </div>
+          </div>
+
+          <Divider />
+
+          <div>
+            <GroupTitle>Vagas</GroupTitle>
+            <div className="grid gap-4">
+              <ToggleRow
+                label="Vagas restantes"
+                checked={spots.enabled}
+                onChange={(v) => setSpots({ ...spots, enabled: v })}
+              />
+              {spots.enabled ? (
+                <FieldGrid>
+                  <Field label="Origem do número de vagas">
+                    <Select
+                      value={spots.mode}
+                      onChange={(e) => setSpots({ ...spots, mode: e.target.value as Scarcity['spots']['mode'] })}
+                    >
+                      <option value="manual">Número fixo que eu escolho</option>
+                      <option value="from_sales">Descontar as vendas pagas do total</option>
+                    </Select>
+                  </Field>
                   <Field
-                    label="Termina em"
-                    error={campanhaSemData ? 'Sem data, a campanha volta para o modo por visitante.' : null}
+                    label={spots.mode === 'from_sales' ? 'Total de vagas da oferta' : 'Vagas exibidas'}
+                    hint={spots.mode === 'from_sales' ? 'A página mostra este total menos os pedidos pagos.' : undefined}
                   >
-                    <Input
-                      type="datetime-local"
-                      value={cdEnds}
-                      onChange={(e) => setCdEnds(e.target.value)}
-                      aria-invalid={campanhaSemData || undefined}
-                    />
-                  </Field>
-                )}
-              </FieldGrid>
-            ) : null}
-          </div>
-        </div>
-
-        <Divider />
-
-        <div>
-          <GroupTitle>Vagas</GroupTitle>
-          <div className="grid gap-4">
-            <ToggleRow
-              label="Vagas restantes"
-              checked={spots.enabled}
-              onChange={(v) => setSpots({ ...spots, enabled: v })}
-            />
-            {spots.enabled ? (
-              <FieldGrid>
-                <Field label="Origem do número de vagas">
-                  <Select
-                    value={spots.mode}
-                    onChange={(e) => setSpots({ ...spots, mode: e.target.value as Scarcity['spots']['mode'] })}
-                  >
-                    <option value="manual">Número fixo que eu escolho</option>
-                    <option value="from_sales">Descontar as vendas pagas do total</option>
-                  </Select>
-                </Field>
-                <Field
-                  label={spots.mode === 'from_sales' ? 'Total de vagas da oferta' : 'Vagas exibidas'}
-                  hint={spots.mode === 'from_sales' ? 'A página mostra este total menos os pedidos pagos.' : undefined}
-                >
-                  <Input
-                    inputMode="numeric"
-                    value={String(spots.value)}
-                    onChange={(e) => setSpots({ ...spots, value: Number(e.target.value.replace(/\D/g, '')) || 0 })}
-                  />
-                </Field>
-              </FieldGrid>
-            ) : null}
-          </div>
-        </div>
-
-        <Divider />
-
-        <div>
-          <GroupTitle>Compradores e barra</GroupTitle>
-          <div className="grid gap-4">
-            <ToggleRow
-              label="Compradores nas últimas 24h"
-              hint='Sem efeito hoje: o texto "X pessoas garantiram o acesso" saiu da página. Quem faz esse papel agora é o aviso de compra recente, aqui embaixo.'
-              checked={buyers.enabled}
-              onChange={(v) => setBuyers({ ...buyers, enabled: v })}
-            />
-            {buyers.enabled ? (
-              <FieldGrid>
-                <Field label="Origem do número de compradores">
-                  <Select
-                    value={buyers.mode}
-                    onChange={(e) => setBuyers({ ...buyers, mode: e.target.value as Scarcity['buyers']['mode'] })}
-                  >
-                    <option value="manual">Número fixo que eu escolho</option>
-                    <option value="from_sales">Contar os pedidos pagos de verdade nas últimas 24h</option>
-                  </Select>
-                </Field>
-                {buyers.mode === 'manual' ? (
-                  <Field label="Compradores exibidos">
                     <Input
                       inputMode="numeric"
-                      value={String(buyers.value)}
-                      onChange={(e) => setBuyers({ ...buyers, value: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+                      value={String(spots.value)}
+                      onChange={(e) => setSpots({ ...spots, value: Number(e.target.value.replace(/\D/g, '')) || 0 })}
                     />
                   </Field>
-                ) : null}
-              </FieldGrid>
-            ) : null}
+                </FieldGrid>
+              ) : null}
+            </div>
+          </div>
 
-            <ToggleRow
-              label="Barra amarela sobre o checkout"
-              hint="Sem efeito hoje: esta barra foi removida da página. As contagens que existem são a tarja no card de preço e a faixa de lançamento no checkout — as duas leem este mesmo prazo, então nunca divergem."
-              checked={bar}
-              onChange={setBar}
-            />
+          <Divider />
+
+          <div>
+            <GroupTitle>Compradores e barra</GroupTitle>
+            <div className="grid gap-4">
+              <ToggleRow
+                label="Compradores nas últimas 24h"
+                hint='Sem efeito hoje: o texto "X pessoas garantiram o acesso" saiu da página. Quem faz esse papel agora é o aviso de compra recente, aqui embaixo.'
+                checked={buyers.enabled}
+                onChange={(v) => setBuyers({ ...buyers, enabled: v })}
+              />
+              {buyers.enabled ? (
+                <FieldGrid>
+                  <Field label="Origem do número de compradores">
+                    <Select
+                      value={buyers.mode}
+                      onChange={(e) => setBuyers({ ...buyers, mode: e.target.value as Scarcity['buyers']['mode'] })}
+                    >
+                      <option value="manual">Número fixo que eu escolho</option>
+                      <option value="from_sales">Contar os pedidos pagos de verdade nas últimas 24h</option>
+                    </Select>
+                  </Field>
+                  {buyers.mode === 'manual' ? (
+                    <Field label="Compradores exibidos">
+                      <Input
+                        inputMode="numeric"
+                        value={String(buyers.value)}
+                        onChange={(e) => setBuyers({ ...buyers, value: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+                      />
+                    </Field>
+                  ) : null}
+                </FieldGrid>
+              ) : null}
+
+              <ToggleRow
+                label="Barra amarela sobre o checkout"
+                hint="Sem efeito hoje: esta barra foi removida da página. As contagens que existem são a tarja no card de preço e a faixa de lançamento no checkout — as duas leem este mesmo prazo, então nunca divergem."
+                checked={bar}
+                onChange={setBar}
+              />
+            </div>
           </div>
         </div>
-      </CardForm>
+      </Surface>
 
       {/* ------------------------------------------------------------- *
           Aviso de compra recente — cartão próprio, porque é o bloco que
           o dono ainda precisa preencher e some no meio dos outros sete.
           ------------------------------------------------------------- */}
-      <Card>
-        <CardTitle
+      <Surface as="section" tone="base" className="mb-5 max-w-[52rem]">
+        <SurfaceHeader
+          icon={<MessageSquareQuote />}
           title="Aviso de compra recente"
           hint='Um selo rotativo no canto da página: "Adriano · Goiânia acabou de adquirir Maiores Odds".'
         />
@@ -353,17 +378,24 @@ function Formulario({ inicial }: { inicial: Scarcity }) {
               </div>
             </>
           ) : null}
-
-          <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
-            <Button loading={salvar.isPending} onClick={submeter}>
-              Salvar escassez e avisos
-            </Button>
-            <span className="text-2xs text-muted">
-              Este botão salva a tela inteira — contador, vagas, compradores e avisos.
-            </span>
-          </div>
         </div>
-      </Card>
-    </>
+      </Surface>
+
+      {/* Uma barra só para a tela inteira: contador, vagas, compradores e avisos
+          vão no mesmo PUT, então dois botões só confundiam. */}
+      <SaveBar
+        inset={false}
+        submit
+        dirty={sujo}
+        saving={salvar.isPending}
+        saveLabel="Salvar escassez e avisos"
+        className="max-w-[52rem]"
+        message={
+          sujo
+            ? 'Alterações não salvas — este botão salva a tela inteira: contador, vagas, compradores e avisos.'
+            : 'Tudo salvo. O botão salva a tela inteira — contador, vagas, compradores e avisos.'
+        }
+      />
+    </form>
   );
 }

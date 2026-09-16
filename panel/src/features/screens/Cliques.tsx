@@ -4,17 +4,9 @@ import { api, descreverErro, ehSessaoExpirada } from '@/lib/api';
 import { num } from '@/lib/format';
 import type { ClickCount, ClicksSummary } from '@/lib/types';
 import { Kpi, KpiGrid, Segmented } from '@/components/ui/metrics';
-import {
-  Card,
-  CardTitle,
-  Empty,
-  ErrorState,
-  Loading,
-  Table,
-  TableWrap,
-  Td,
-  Th,
-} from '@/components/ui/layout';
+import { Empty, ErrorState, Loading } from '@/components/ui/layout';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
+import { Table, TBody, TD, TH, THead, TRow } from '@/components/ui/table';
 import { chaves } from '../hooks';
 
 /* ==========================================================================
@@ -77,42 +69,42 @@ function TabelaDeCliques<T>({
   contagem: (i: T) => ClickCount;
 }) {
   return (
-    <Card wide>
-      <CardTitle title={titulo} hint={hint} />
+    <Surface as="section" className="mb-5">
+      <SurfaceHeader title={titulo} hint={hint} />
       {itens.length === 0 ? (
         <Empty>{vazio}</Empty>
       ) : (
-        <TableWrap>
-          <Table>
-            <thead>
-              <tr>
-                <Th>{coluna}</Th>
-                <Th num>Cliques</Th>
-                <Th num>Pessoas</Th>
-                <Th num>Por pessoa</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {itens.map((i) => {
-                const c = contagem(i);
-                return (
-                  <tr key={chave(i)}>
-                    <Td>{celula(i)}</Td>
-                    <Td num>{num(c.cliques)}</Td>
-                    <Td num muted>
-                      {num(c.pessoas)}
-                    </Td>
-                    <Td num muted>
-                      {porPessoa(c)}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        </TableWrap>
+        <Table sticky stackBelow="sm" caption={titulo}>
+          <THead>
+            <TRow>
+              <TH>{coluna}</TH>
+              <TH num>Cliques</TH>
+              <TH num>Pessoas</TH>
+              <TH num>Por pessoa</TH>
+            </TRow>
+          </THead>
+          <TBody>
+            {itens.map((i) => {
+              const c = contagem(i);
+              return (
+                <TRow key={chave(i)}>
+                  <TD label={coluna}>{celula(i)}</TD>
+                  <TD num label="Cliques">
+                    {num(c.cliques)}
+                  </TD>
+                  <TD num muted label="Pessoas">
+                    {num(c.pessoas)}
+                  </TD>
+                  <TD num muted label="Por pessoa">
+                    {porPessoa(c)}
+                  </TD>
+                </TRow>
+              );
+            })}
+          </TBody>
+        </Table>
       )}
-    </Card>
+    </Surface>
   );
 }
 

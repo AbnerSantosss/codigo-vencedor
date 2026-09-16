@@ -13,20 +13,9 @@ import type {
 } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGrid, Input, Select, Textarea, ToggleRow } from '@/components/ui/form';
-import {
-  Badge,
-  Callout,
-  Card,
-  CardTitle,
-  Empty,
-  ErrorState,
-  GroupTitle,
-  Loading,
-  Table,
-  TableWrap,
-  Td,
-  Th,
-} from '@/components/ui/layout';
+import { Badge, Callout, Empty, ErrorState, GroupTitle, Loading } from '@/components/ui/layout';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
+import { Table, TBody, TD, TH, THead, TRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toast';
@@ -112,15 +101,15 @@ export function TelaWebhooks() {
 
   return (
     <Tabs defaultValue="saida">
-      <TabsList>
+      <TabsList variant="underline">
         <TabsTrigger value="saida">Avisar outro sistema ({lista.data.webhooks.length})</TabsTrigger>
         <TabsTrigger value="entrada">O que os gateways nos avisaram</TabsTrigger>
       </TabsList>
 
       {/* --------------------------------------------------- Saída --- */}
       <TabsContent value="saida">
-        <Card wide>
-          <CardTitle
+        <Surface as="section" className="mb-5">
+          <SurfaceHeader
             title="Webhooks de saída"
             hint="A cada evento, o servidor faz uma requisição assinada para a URL que você cadastrar — serve para n8n, Make, planilha, área de membros ou o que precisar liberar acesso."
             action={
@@ -139,7 +128,7 @@ export function TelaWebhooks() {
           ) : (
             <div className="grid gap-3">
               {lista.data.webhooks.map((w) => (
-                <div key={w.id} className="rounded-md border border-line bg-bg p-4">
+                <Surface key={w.id} as="article" tone="base" className="p-4 sm:p-4">
                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -192,14 +181,14 @@ export function TelaWebhooks() {
                       Excluir
                     </Button>
                   </div>
-                </div>
+                </Surface>
               ))}
             </div>
           )}
-        </Card>
+        </Surface>
 
-        <Card>
-          <CardTitle
+        <Surface as="section" className="mb-5 max-w-[52rem]">
+          <SurfaceHeader
             title="Como o destino confere que é você"
             hint="O que o servidor manda em cada requisição, para o outro lado poder validar."
           />
@@ -221,13 +210,13 @@ export function TelaWebhooks() {
               à mão no histórico.
             </li>
           </ul>
-        </Card>
+        </Surface>
       </TabsContent>
 
       {/* -------------------------------------------------- Entrada --- */}
       <TabsContent value="entrada">
-        <Card wide>
-          <CardTitle
+        <Surface as="section" className="mb-5">
+          <SurfaceHeader
             title="Notificações recebidas dos gateways"
             hint="Toda notificação passa por assinatura antes de ser aceita, e o status do pagamento é sempre reconsultado na API do provedor — nunca lido do corpo da notificação."
           />
@@ -241,38 +230,40 @@ export function TelaWebhooks() {
               apontando o webhook para <code>/webhooks/mercadopago</code>.
             </Empty>
           ) : (
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Quando</Th>
-                    <Th>Provedor</Th>
-                    <Th>Tipo</Th>
-                    <Th>Pedido</Th>
-                    <Th>Processada</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inbound.data.inbound.map((e) => (
-                    <tr key={e.id}>
-                      <Td muted>{quando(e.receivedAt)}</Td>
-                      <Td>{e.provider}</Td>
-                      <Td muted>{e.eventType ?? '—'}</Td>
-                      <Td>{e.reference ?? '—'}</Td>
-                      <Td>
-                        {e.processedAt ? (
-                          <Badge tom="paid">{e.result ?? 'ok'}</Badge>
-                        ) : (
-                          <Badge tom="pending">pendente</Badge>
-                        )}
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
+            <Table sticky stackBelow="sm" caption="Notificações recebidas dos gateways">
+              <THead>
+                <TRow>
+                  <TH>Quando</TH>
+                  <TH>Provedor</TH>
+                  <TH>Tipo</TH>
+                  <TH>Pedido</TH>
+                  <TH>Processada</TH>
+                </TRow>
+              </THead>
+              <TBody>
+                {inbound.data.inbound.map((e) => (
+                  <TRow key={e.id}>
+                    <TD muted label="Quando">
+                      {quando(e.receivedAt)}
+                    </TD>
+                    <TD label="Provedor">{e.provider}</TD>
+                    <TD muted label="Tipo">
+                      {e.eventType ?? '—'}
+                    </TD>
+                    <TD label="Pedido">{e.reference ?? '—'}</TD>
+                    <TD label="Processada">
+                      {e.processedAt ? (
+                        <Badge tom="paid">{e.result ?? 'ok'}</Badge>
+                      ) : (
+                        <Badge tom="pending">pendente</Badge>
+                      )}
+                    </TD>
+                  </TRow>
+                ))}
+              </TBody>
+            </Table>
           )}
-        </Card>
+        </Surface>
       </TabsContent>
 
       {/* ------------------------------------------------ Formulário --- */}
@@ -555,35 +546,38 @@ function HistoricoEntregas({
           integração.
         </Empty>
       ) : (
-        <TableWrap>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Quando</Th>
-                <Th>Evento</Th>
-                <Th>Estado</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.deliveries.map((d) => {
-                const est = estadoDaEntrega(d);
-                return (
-                  <tr key={d.id}>
-                    <Td muted>{quando(d.createdAt)}</Td>
-                    <Td>
-                      {eventos[d.event] ?? d.event}
-                      {d.reference ? <span className="block text-2xs text-muted">{d.reference}</span> : null}
-                    </Td>
-                    <Td>
-                      <Badge tom={est.tom}>{est.label}</Badge>
-                      <span className="block text-2xs text-muted">
-                        tentativa {d.attempt}
-                        {d.nextRetryAt ? ` · próxima ${quando(d.nextRetryAt)}` : ''}
-                      </span>
-                    </Td>
-                    <Td>
-                      {!d.deliveredAt ? (
+        <Table stackBelow="sm" caption={`Entregas de ${webhook.name}`}>
+          <THead>
+            <TRow>
+              <TH>Quando</TH>
+              <TH>Evento</TH>
+              <TH>Estado</TH>
+              <TH>
+                <span className="sr-only">Ações</span>
+              </TH>
+            </TRow>
+          </THead>
+          <TBody>
+            {data.deliveries.map((d) => {
+              const est = estadoDaEntrega(d);
+              return (
+                <TRow key={d.id}>
+                  <TD muted label="Quando">
+                    {quando(d.createdAt)}
+                  </TD>
+                  <TD label="Evento">
+                    {eventos[d.event] ?? d.event}
+                    {d.reference ? <span className="block text-2xs text-muted">{d.reference}</span> : null}
+                  </TD>
+                  <TD label="Estado">
+                    <Badge tom={est.tom}>{est.label}</Badge>
+                    <span className="block text-2xs text-muted">
+                      tentativa {d.attempt}
+                      {d.nextRetryAt ? ` · próxima ${quando(d.nextRetryAt)}` : ''}
+                    </span>
+                  </TD>
+                  <TD label="Ações">
+                    {!d.deliveredAt ? (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -594,13 +588,12 @@ function HistoricoEntregas({
                           Reenviar
                         </Button>
                       ) : null}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        </TableWrap>
+                  </TD>
+                </TRow>
+              );
+            })}
+          </TBody>
+        </Table>
       )}
 
       <p className="mt-4 flex items-start gap-2 text-2xs text-muted">
