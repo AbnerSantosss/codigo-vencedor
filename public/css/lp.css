@@ -804,6 +804,19 @@ button { font-family: inherit; cursor: pointer; }
 .cv-coupon-msg--ok { color: var(--cv-cta); }
 .cv-coupon-msg--erro { color: var(--cv-danger); }
 
+/* Duas copias do mesmo cupom: uma no formulario (celular), outra no resumo
+   do pedido (desktop, logo abaixo do nome do produto). So uma fica visivel
+   por vez — mesmo raciocinio de `.cv-desktop-copy`/`.cv-mobile-copy` deste
+   arquivo, aplicado a um bloco inteiro, nao a um texto. O corte e 64em
+   porque e so a partir dai que o resumo vira coluna ao lado do formulario
+   (bloco "Checkout mobile consolidado"); antes disso o resumo fica empilhado
+   por cima do formulario, e "do lado direito" ainda nao existe. */
+.cv-coupon--desktop { display: none; margin-top: 0.875rem; }
+@media (min-width: 64em) {
+  .cv-coupon--mobile { display: none; }
+  .cv-coupon--desktop:not([hidden]) { display: grid; }
+}
+
 /* A linha do cupom no resumo usa o verde de acao, nao o amarelo da marca:
    o amarelo ja e o preco, e duas linhas amarelas a competir confundem quem
    so quer conferir quanto vai pagar. */

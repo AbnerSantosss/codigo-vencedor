@@ -473,7 +473,7 @@
             </div>
           </div>
 
-          <!-- Cupom de desconto.
+          <!-- Cupom de desconto (celular).
 
                O bloco inteiro nasce escondido e so aparece quando o painel
                liga cupons (checkout.couponsEnabled) - ver initCoupon() no
@@ -481,8 +481,15 @@
                sugerindo que existe um desconto que ele nao tem.
 
                O valor do desconto NUNCA e calculado aqui: o botao Aplicar
-               pergunta ao servidor e mostra o que ele responder. -->
-          <div class="cv-coupon" data-cv-coupon hidden>
+               pergunta ao servidor e mostra o que ele responder.
+
+               Esta e a copia do FORMULARIO, so visivel abaixo de 64em (CSS).
+               A partir de 64em, quando o resumo vira coluna ao lado do
+               formulario, quem aparece e a copia de `.cv-checkout-summary`,
+               logo abaixo do nome do produto — ver `.cv-coupon--mobile` /
+               `.cv-coupon--desktop` no lp.css e `initCoupon()` no lp.js, que
+               liga as duas caixas ao mesmo cupom. -->
+          <div class="cv-coupon cv-coupon--mobile" data-cv-coupon hidden>
             <label class="cv-coupon-label" for="cv-coupon-input">Tem um cupom de desconto?</label>
             <div class="cv-coupon-row">
               <input class="cv-input cv-coupon-input" id="cv-coupon-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DIGITE O CUPOM" maxlength="40" data-cv-coupon-input>
@@ -558,6 +565,26 @@
           <div class="cv-order-d"><span class="cv-desktop-copy">A ferramenta principal · 5 bônus · o tutorial · 1 mês de acesso · 500 tokens</span><span class="cv-mobile-copy">Código + 1 mês de app + 5 ferramentas bônus</span></div>
         </div>
       </div>
+
+      <!-- Cupom de desconto (desktop).
+
+           Mesma logica e mesmo `data-cv-coupon` da copia do formulario (ver
+           comentario la); esta e a que aparece a partir de 64em, quando o
+           resumo vira coluna ao lado do formulario — pedido do dono para o
+           campo ficar minimalista, logo abaixo do nome do produto, em vez
+           de dentro do formulario. IDs proprios (sufixo -desktop) porque
+           `for`/`id` nao pode repetir na pagina; os `data-cv-coupon-*`
+           continuam iguais, ja que `initCoupon()` busca cada um dentro da
+           sua propria caixa. -->
+      <div class="cv-coupon cv-coupon--desktop" data-cv-coupon hidden>
+        <label class="cv-coupon-label" for="cv-coupon-input-desktop">Tem um cupom de desconto?</label>
+        <div class="cv-coupon-row">
+          <input class="cv-input cv-coupon-input" id="cv-coupon-input-desktop" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DIGITE O CUPOM" maxlength="40" data-cv-coupon-input>
+          <button type="button" class="cv-btn cv-btn--coupon" data-cv-coupon-apply>Aplicar</button>
+        </div>
+        <p class="cv-coupon-msg" data-cv-coupon-msg role="status" aria-live="polite" hidden></p>
+      </div>
+
       <div class="cv-order-rows">
         <div class="cv-order-row"><span>Código Vencedor (o tutorial)</span><span class="cv-strike">R$ 197</span></div>
         <div class="cv-order-row"><span>Aposta Segura + 5 ferramentas (1 mês)</span><span class="cv-strike">R$ 47,90</span></div>

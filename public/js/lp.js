@@ -1466,7 +1466,7 @@
   /* ---------------------------------------------------------------------
      Campo de cupom
 
-     Tres regras que moram aqui:
+     Quatro regras que moram aqui:
 
      1. O bloco so aparece se o painel ligou cupons. Mostrar um campo de
         cupom para quem nao tem cupom nenhum e um convite a abandonar o
@@ -1477,6 +1477,12 @@
      3. Mexeu no campo depois de aplicar, o desconto cai. Sem isso a pessoa
         apagaria o codigo, veria o preco com desconto na tela e receberia um
         Pix pelo preco cheio.
+     4. Existem DUAS caixas no HTML — uma no formulario (celular) e outra no
+        resumo do pedido (desktop, abaixo do nome do produto) — e so uma
+        fica visivel por vez (CSS, breakpoint de 64em). E o mesmo cupom, so
+        o lugar muda: as duas leem/escrevem o mesmo `CUPOM` do modulo e
+        chamam `pintarCupom()`, que e quem atualiza o preco em qualquer
+        lugar da pagina.
      --------------------------------------------------------------------- */
   function pintarCupom() {
     var linha = $('[data-cv-coupon-row]');
@@ -1494,14 +1500,15 @@
     applyPrices(document);
   }
 
-  function initCoupon() {
-    var box = $('[data-cv-coupon]');
-    if (!box) return;
+  function normalizarCupom(v) {
+    return (v || '').trim().split(' ').join('').toUpperCase();
+  }
 
-    var ligado = !!(CFG.checkout && CFG.checkout.couponsEnabled);
-    box.hidden = !ligado;
-    if (!ligado) return;
-
+  /* Liga uma unica caixa de cupom. Cada caixa tem seu proprio campo, botao
+     e aviso, mas todas leem/escrevem o mesmo `CUPOM` do modulo — aplicar
+     numa atualiza o preco em qualquer lugar, inclusive na outra caixa
+     escondida pelo CSS. */
+  function initCoupomBox(box) {
     var campo = $('[data-cv-coupon-input]', box);
     var botao = $('[data-cv-coupon-apply]', box);
     var aviso = $('[data-cv-coupon-msg]', box);
@@ -1515,10 +1522,6 @@
       aviso.classList.toggle('cv-coupon-msg--erro', ok === false);
     }
 
-    function normalizar(v) {
-      return (v || '').trim().split(' ').join('').toUpperCase();
-    }
-
     function limpar() {
       if (!CUPOM) return;
       CUPOM = null;
@@ -1528,7 +1531,7 @@
 
     /* Editou o campo: o desconto que estava na tela deixa de valer na hora. */
     campo.addEventListener('input', function () {
-      campo.value = normalizar(campo.value);
+      campo.value = normalizarCupom(campo.value);
       if (CUPOM && campo.value !== CUPOM.code) limpar();
     });
 
@@ -1542,7 +1545,7 @@
     botao.addEventListener('click', aplicar);
 
     function aplicar() {
-      var codigo = normalizar(campo.value);
+      var codigo = normalizarCupom(campo.value);
       if (!codigo) { limpar(); return dizer('Digite o cupom.', false); }
       if (CUPOM && CUPOM.code === codigo) return;
 
@@ -1591,6 +1594,17 @@
           botao.textContent = rotulo;
         });
     }
+  }
+
+  function initCoupon() {
+    var boxes = $$('[data-cv-coupon]');
+    if (!boxes.length) return;
+
+    var ligado = !!(CFG.checkout && CFG.checkout.couponsEnabled);
+    boxes.forEach(function (box) { box.hidden = !ligado; });
+    if (!ligado) return;
+
+    boxes.forEach(initCoupomBox);
   }
 
   function boot() {
