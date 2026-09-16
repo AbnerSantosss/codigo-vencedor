@@ -497,7 +497,7 @@ export const siteConfigSchema = z.object({
   checkout: checkoutSchema,
   tracking: trackingSchema,
   email: emailSchema,
-  gatewayActive: z.enum(['mercadopago', 'appmax', 'static_pix']),
+  gatewayActive: z.enum(['mercadopago', 'appmax', 'static_pix', 'fyhub']),
   gatewayMode: z.enum(['sandbox', 'production']),
   pixExpiresMin: z.number().int().min(5).max(1440),
 });

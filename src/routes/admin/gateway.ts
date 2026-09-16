@@ -4,7 +4,9 @@ import { prisma } from '../../db.js';
 import { audit } from '../../lib/audit.js';
 import { requireAdmin, requireOwner } from '../../lib/auth.js';
 import { getSiteConfig, invalidateConfigCache } from '../../services/config.js';
+import { env } from '../../env.js';
 import { gatewayPorId } from '../../gateways/index.js';
+import { invalidarFyhub, registrarWebhook, urlDoWebhook } from '../../gateways/fyhub.js';
 import { SECRET_KEYS, getSecret, secretsStatus, setSecret, type SecretKey } from '../../services/secrets.js';
 
 /** Chaves que esta tela administra. */
@@ -14,13 +16,34 @@ const GATEWAY_SECRETS: SecretKey[] = [
   SECRET_KEYS.appmaxClientId,
   SECRET_KEYS.appmaxClientSecret,
   SECRET_KEYS.appmaxWebhookToken,
+  SECRET_KEYS.fyhubClientId,
+  SECRET_KEYS.fyhubClientSecret,
+  SECRET_KEYS.fyhubCertPem,
+  SECRET_KEYS.fyhubKeyPem,
+  SECRET_KEYS.fyhubCertPassphrase,
+  SECRET_KEYS.fyhubPixKey,
+  SECRET_KEYS.fyhubWebhookToken,
   SECRET_KEYS.staticPixKey,
   SECRET_KEYS.staticPixName,
   SECRET_KEYS.staticPixCity,
 ];
 
+/**
+ * Chaves que aceitam texto longo, porque guardam PEM.
+ *
+ * Um certificado de cliente costuma ter de 1 a 3 KB, e a chave privada
+ * outro tanto; cadeias com intermediários passam de 5 KB. O teto de 500
+ * caracteres que serve para um token cortaria o certificado no meio — e o
+ * erro apareceria só no handshake TLS, como "conexão recusada", sem nada
+ * apontando para o campo que foi truncado ao salvar.
+ */
+const CHAVES_LONGAS = new Set<string>([SECRET_KEYS.fyhubCertPem, SECRET_KEYS.fyhubKeyPem]);
+
+const LIMITE_CURTO = 500;
+const LIMITE_LONGO = 8000;
+
 const putBody = z.object({
-  gatewayActive: z.enum(['mercadopago', 'appmax', 'static_pix']),
+  gatewayActive: z.enum(['mercadopago', 'appmax', 'static_pix', 'fyhub']),
   gatewayMode: z.enum(['sandbox', 'production']),
   pixExpiresMin: z.number().int().min(5).max(1440),
   /**
@@ -28,7 +51,43 @@ const putBody = z.object({
    * mantém o segredo atual; string vazia apaga. Isso é o que permite a tela
    * mostrar "configurado" sem nunca devolver o valor.
    */
-  secrets: z.record(z.string().max(500)).optional(),
+  secrets: z
+    .record(z.string().max(LIMITE_LONGO))
+    .optional()
+    .superRefine((mapa, ctx) => {
+      for (const [chave, valor] of Object.entries(mapa ?? {})) {
+        const longa = CHAVES_LONGAS.has(chave);
+        const limite = longa ? LIMITE_LONGO : LIMITE_CURTO;
+
+        if (valor.length > limite) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [chave],
+            message: `Valor longo demais (máximo de ${limite} caracteres).`,
+          });
+          continue;
+        }
+
+        /**
+         * PEM colado pela metade é o erro mais provável desta tela: o
+         * material chega por e-mail em formato binário e vira PEM à mão,
+         * e é fácil esquecer a linha BEGIN. Recusar aqui devolve uma frase
+         * que aponta o campo; deixar passar produz, semanas depois, um
+         * "conexão recusada" que não explica nada.
+         *
+         * Valor vazio escapa da checagem porque é assim que a tela apaga
+         * um segredo.
+         */
+        if (longa && valor && !valor.includes('-----BEGIN')) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [chave],
+            message:
+              'Isto não parece um PEM. Cole o conteúdo inteiro do arquivo, incluindo a linha que começa com -----BEGIN.',
+          });
+        }
+      }
+    }),
 });
 
 export const gatewayRoutes: FastifyPluginAsync = async (app) => {
@@ -72,6 +131,18 @@ export const gatewayRoutes: FastifyPluginAsync = async (app) => {
       touched.push(key);
     }
 
+    /**
+     * Derruba o agente mTLS e o token da FyHub quando qualquer credencial
+     * dela muda.
+     *
+     * O agente se refaz sozinho, porque a chave do cache dele é a impressão
+     * digital do próprio PEM. O token não: ele é guardado por ambiente, e
+     * um client_secret novo continuaria usando o token antigo até ele
+     * expirar — até uma hora acreditando numa credencial que já foi
+     * trocada, justamente na janela em que o dono está testando a tela.
+     */
+    if (touched.some((k) => k.startsWith('fyhub.'))) invalidarFyhub();
+
     await audit(req, 'gateway.update', 'SiteConfig', '1', {
       de: { ativo: before.gatewayActive, ambiente: before.gatewayMode, expiraEm: before.pixExpiresMin },
       para: { ativo: gatewayActive, ambiente: gatewayMode, expiraEm: pixExpiresMin },
@@ -113,6 +184,13 @@ export const gatewayRoutes: FastifyPluginAsync = async (app) => {
       mercadopago: [SECRET_KEYS.mpAccessToken, SECRET_KEYS.mpWebhookSecret],
       appmax: [SECRET_KEYS.appmaxClientId, SECRET_KEYS.appmaxClientSecret],
       static_pix: [SECRET_KEYS.staticPixKey, SECRET_KEYS.staticPixName, SECRET_KEYS.staticPixCity],
+      fyhub: [
+        SECRET_KEYS.fyhubClientId,
+        SECRET_KEYS.fyhubClientSecret,
+        SECRET_KEYS.fyhubCertPem,
+        SECRET_KEYS.fyhubKeyPem,
+        SECRET_KEYS.fyhubPixKey,
+      ],
     };
 
     const missing: string[] = [];
@@ -175,4 +253,76 @@ export const gatewayRoutes: FastifyPluginAsync = async (app) => {
       },
     });
   });
+
+  /**
+   * Registra o webhook da FyHub — o passo que não existe nos outros dois.
+   *
+   * No Mercado Pago a URL de notificação é colada num formulário do site
+   * deles, e a Appmax cadastra pelo painel. No padrão do Banco Central o
+   * webhook é registrado **pela API**, com `PUT /webhook/{chave}`. Sem esta
+   * chamada a cobrança é criada normalmente, o comprador paga, e ninguém
+   * nunca avisa o sistema — a venda fica pendente até alguém reparar.
+   *
+   * Por isso é um botão, e não algo escondido no "salvar": o dono precisa
+   * ver que fez, e o teste de conexão precisa poder dizer que falta fazer.
+   *
+   * Limite de 6 por minuto porque é uma escrita na conta do provedor, não
+   * uma consulta: não há motivo para alguém chamar isto em sequência.
+   */
+  app.post(
+    '/gateway/fyhub/webhook',
+    { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      /**
+       * A FyHub só aceita registrar uma URL pública em HTTPS, e com razão:
+       * é por ela que trafega a confirmação de pagamento. Barrar aqui troca
+       * um erro remoto e opaco por uma frase que diz o que configurar.
+       */
+      if (!env.PUBLIC_URL.startsWith('https://')) {
+        return reply.code(400).send({
+          error: 'public_url_invalida',
+          message:
+            'O endereço público do site precisa ser HTTPS para receber o webhook da FyHub. ' +
+            `Hoje ele está como ${env.PUBLIC_URL}. Ajuste PUBLIC_URL no ambiente e tente de novo.`,
+        });
+      }
+
+      const url = await urlDoWebhook(env.PUBLIC_URL);
+      if (!url) {
+        return reply.code(400).send({
+          error: 'sem_segredo',
+          message:
+            'Defina antes o segredo do webhook da FyHub e salve a tela. Ele vai no endereço que a ' +
+            'FyHub chama, e é o que separa uma notificação de verdade de um POST de estranho.',
+        });
+      }
+
+      try {
+        await registrarWebhook(env.PUBLIC_URL);
+      } catch (err) {
+        const detalhe = err instanceof Error ? err.message : 'erro desconhecido';
+        req.log.error({ err }, 'fyhub: falha ao registrar o webhook');
+
+        await audit(req, 'gateway.fyhub.webhook', 'SiteConfig', '1', { ok: false, erro: detalhe.slice(0, 200) });
+
+        return reply.code(502).send({
+          error: 'registro_falhou',
+          message: `A FyHub recusou o registro: ${detalhe}`,
+        });
+      }
+
+      /**
+       * A URL entra na auditoria porque não é segredo do mesmo tipo: quem
+       * lê o log já é dono, e saber qual endereço está registrado é o que
+       * permite conferir uma integração que parou de notificar.
+       */
+      await audit(req, 'gateway.fyhub.webhook', 'SiteConfig', '1', { ok: true, url });
+
+      return reply.send({
+        ok: true,
+        url,
+        detail: 'Webhook registrado na FyHub. A partir de agora ela avisa este site a cada Pix recebido.',
+      });
+    },
+  );
 };

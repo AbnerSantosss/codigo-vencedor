@@ -28,6 +28,41 @@ export const SECRET_KEYS = {
    * `src/gateways/appmax.ts`.
    */
   appmaxWebhookToken: 'appmax.webhookToken',
+
+  /* ---------------------------------------------------------------- *
+   * FyHub — API Pix do padrão Banco Central, com mTLS
+   *
+   * São sete chaves porque a FyHub exige duas coisas que nenhum outro
+   * provedor daqui exige: um **certificado de cliente** (sem ele a API
+   * recusa mesmo com o access_token válido) e a **chave Pix do recebedor**
+   * dentro do corpo de cada cobrança.
+   *
+   * O certificado e a chave privada ficam aqui, em PEM, pelo mesmo motivo
+   * que o token do Mercado Pago fica: cifrados em repouso e fora do disco
+   * do contêiner. Guardar em arquivo exigiria um volume que o backup teria
+   * de cobrir e que o Portainer teria de recriar a cada deploy.
+   * ---------------------------------------------------------------- */
+  fyhubClientId: 'fyhub.clientId',
+  fyhubClientSecret: 'fyhub.clientSecret',
+  /** Certificado do cliente em PEM (`-----BEGIN CERTIFICATE-----`). */
+  fyhubCertPem: 'fyhub.certPem',
+  /** Chave privada do certificado, em PEM. */
+  fyhubKeyPem: 'fyhub.keyPem',
+  /** Senha da chave privada, quando ela vem cifrada. Opcional. */
+  fyhubCertPassphrase: 'fyhub.certPassphrase',
+  /** Chave Pix cadastrada na conta FyHub — vai em `cob.chave`. */
+  fyhubPixKey: 'fyhub.pixKey',
+  /**
+   * Segredo que viaja no **caminho** da URL do webhook, não na query.
+   *
+   * O padrão BCB não assina notificação (a prova, na especificação, é o
+   * mTLS do PSP para o recebedor, que atrás do túnel Cloudflare não temos
+   * como exigir). Então a prova é nossa, como na Appmax — só que no
+   * caminho, porque o padrão **anexa `/pix` à URL cadastrada** e uma
+   * query string se perderia nessa concatenação.
+   */
+  fyhubWebhookToken: 'fyhub.webhookToken',
+
   staticPixKey: 'pix.key',
   staticPixName: 'pix.merchantName',
   staticPixCity: 'pix.merchantCity',

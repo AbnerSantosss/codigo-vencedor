@@ -1,6 +1,7 @@
 import { getSiteConfig } from '../services/config.js';
-import { SECRET_KEYS, getSecret } from '../services/secrets.js';
+import { SECRET_KEYS, getSecret, getSecrets } from '../services/secrets.js';
 import { appmaxGateway } from './appmax.js';
+import { fyhubGateway } from './fyhub.js';
 import { mercadoPagoGateway } from './mercadopago.js';
 import { staticPixGateway } from './staticPix.js';
 import type { GatewayId } from '@prisma/client';
@@ -27,6 +28,30 @@ export async function resolveGateway(): Promise<PaymentGateway> {
       return (await getSecret(SECRET_KEYS.appmaxClientId)) && (await getSecret(SECRET_KEYS.appmaxClientSecret))
         ? appmaxGateway
         : staticPixGateway;
+    /**
+     * A FyHub precisa de cinco coisas, e a falta de qualquer uma produz um
+     * fracasso diferente e igualmente inutil para o comprador: sem o par
+     * client_id/client_secret nao ha token, sem o certificado a conexao nem
+     * se estabelece, e sem a chave Pix a cobranca e recusada por falta de
+     * recebedor. Conferir as cinco aqui e o que faz uma integracao pela
+     * metade cair no Pix estatico em vez de derrubar o checkout.
+     */
+    case 'fyhub': {
+      const s = await getSecrets([
+        SECRET_KEYS.fyhubClientId,
+        SECRET_KEYS.fyhubClientSecret,
+        SECRET_KEYS.fyhubCertPem,
+        SECRET_KEYS.fyhubKeyPem,
+        SECRET_KEYS.fyhubPixKey,
+      ]);
+      const completo =
+        s[SECRET_KEYS.fyhubClientId] &&
+        s[SECRET_KEYS.fyhubClientSecret] &&
+        s[SECRET_KEYS.fyhubCertPem] &&
+        s[SECRET_KEYS.fyhubKeyPem] &&
+        s[SECRET_KEYS.fyhubPixKey];
+      return completo ? fyhubGateway : staticPixGateway;
+    }
     case 'static_pix':
     default:
       return staticPixGateway;
@@ -44,11 +69,13 @@ export function gatewayPorId(id: GatewayId): PaymentGateway {
       return mercadoPagoGateway;
     case 'appmax':
       return appmaxGateway;
+    case 'fyhub':
+      return fyhubGateway;
     case 'static_pix':
     default:
       return staticPixGateway;
   }
 }
 
-export { appmaxGateway, mercadoPagoGateway, staticPixGateway };
+export { appmaxGateway, fyhubGateway, mercadoPagoGateway, staticPixGateway };
 export type { PaymentGateway } from './types.js';

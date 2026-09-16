@@ -1,8 +1,9 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, RouteHandlerMethod } from 'fastify';
 import type { GatewayId, Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { mercadoPagoGateway, assinaturaVelha, verifyMercadoPagoSignature } from '../gateways/mercadopago.js';
 import { appmaxGateway, conferirTokenDeWebhook } from '../gateways/appmax.js';
+import { fyhubGateway, conferirTokenFyhub } from '../gateways/fyhub.js';
 import { aplicarStatusDoGateway, confirmarPagamento } from '../services/payments.js';
 
 /**
@@ -326,6 +327,114 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
       }
     },
   );
+
+  /* ---------------------------------------------------------------- *
+   * FyHub — Pix pelo padrão do Banco Central
+   *
+   * Três diferenças em relação às rotas acima, e todas vêm da
+   * especificação, não de uma escolha nossa:
+   *
+   *   1. **O segredo vai no caminho da URL, não na query.** O padrão manda
+   *      o PSP chamar `{webhookUrl}/pix`, concatenando. Uma URL terminada
+   *      em `?t=SEGREDO` viraria `?t=SEGREDO/pix` — o segredo corrompido e
+   *      a rota recusando tudo. De quebra, mantém o segredo fora da query
+   *      string, que é o que as regras de privacidade do projeto já pedem.
+   *
+   *   2. **Duas rotas, um só tratador.** Alguns PSP validam a URL com um
+   *      POST no endereço puro antes de começar a mandar `/pix`. Recusar
+   *      esse POST faria o cadastro do webhook falhar sem explicação.
+   *
+   *   3. **Uma notificação carrega vários Pix.** O corpo é `{ pix: [...] }`
+   *      e o padrão permite agrupar. Cada item ganha seu próprio registro
+   *      de idempotência: se um falhar, o reenvio do lote inteiro
+   *      reprocessa só ele.
+   *
+   * O de sempre continua valendo: o status **nunca** vem do corpo. A
+   * notificação diz qual `txid` mexeu; se foi pago mesmo, quem responde é o
+   * `GET /cob/{txid}`. Segredo vazado, aqui, compra no máximo uma releitura
+   * na API da FyHub.
+   * ---------------------------------------------------------------- */
+  const tratarFyhub: RouteHandlerMethod = async (req, reply) => {
+    const { token } = (req.params ?? {}) as { token?: string };
+
+    if (!(await conferirTokenFyhub(token))) {
+      req.log.warn({ temToken: Boolean(token) }, 'webhook fyhub: segredo da URL recusado');
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+
+    const corpo = (req.body ?? {}) as { pix?: unknown };
+    const itens = Array.isArray(corpo.pix) ? (corpo.pix as Record<string, unknown>[]) : [];
+
+    /**
+     * Corpo sem `pix`: é o POST de validação que o PSP faz ao cadastrar a
+     * URL. 200 é o que confirma o cadastro para ele.
+     */
+    if (itens.length === 0) {
+      return reply.code(200).send({ ok: true, ignored: 'sem_pix' });
+    }
+
+    let houveFalha = false;
+
+    for (const item of itens) {
+      const txid = String(item.txid ?? '');
+      if (!txid) {
+        req.log.warn({}, 'webhook fyhub: item de notificação sem txid');
+        continue;
+      }
+
+      /**
+       * O `endToEndId` identifica o pagamento de forma única em todo o
+       * arranjo Pix — é a melhor chave de idempotência disponível aqui.
+       * Sem ele, o par txid+horário serve: o mesmo `txid` só volta com
+       * outro horário se for outro pagamento.
+       */
+      const externalId = String(item.endToEndId ?? '') || txid + ':' + String(item.horario ?? '');
+
+      const decisao = await registrarNotificacao('fyhub', externalId, 'pix', item, req.log);
+      if (decisao.tipo === 'repetida') continue;
+      if (decisao.tipo === 'corrida') {
+        houveFalha = true;
+        continue;
+      }
+
+      try {
+        const resultado = await processarCobrancaFyhub(txid, req.log);
+
+        await prisma.webhookEvent.update({
+          where: { id: decisao.registroId },
+          data: { processedAt: new Date(), orderId: resultado.orderId, result: resultado.resumo },
+        });
+      } catch (err) {
+        houveFalha = true;
+        req.log.error({ err, txid }, 'webhook fyhub: falha ao processar');
+
+        await prisma.webhookEvent
+          .update({
+            where: { id: decisao.registroId },
+            data: {
+              result: 'erro: ' + (err instanceof Error ? err.message : 'desconhecido').slice(0, 200),
+            },
+          })
+          .catch(() => undefined);
+      }
+    }
+
+    /**
+     * 500 quando qualquer item falhou: a FyHub reenvia o lote inteiro, e o
+     * índice único de `WebhookEvent` impede que os itens já processados
+     * sejam contados duas vezes.
+     */
+    if (houveFalha) return reply.code(500).send({ error: 'processing_failed' });
+    return reply.code(200).send({ ok: true });
+  };
+
+  const opcoesFyhub = {
+    config: { rateLimit: { max: 600, timeWindow: '1 minute' } },
+    bodyLimit: CORPO_MAX,
+  };
+
+  app.post('/fyhub/:token/pix', opcoesFyhub, tratarFyhub);
+  app.post('/fyhub/:token', opcoesFyhub, tratarFyhub);
 };
 
 /* ------------------------------------------------------------------ *
@@ -402,6 +511,43 @@ async function processarPedidoAppmax(
 
   if (!order) {
     log.warn({ pedidoExterno, status }, 'webhook appmax: pedido sem correspondente aqui');
+    return { orderId: null, resumo: 'sem_pedido:' + status };
+  }
+
+  if (status === 'paid') {
+    const r = await confirmarPagamento(order.id, 'webhook', log);
+    return { orderId: order.id, resumo: r?.mudou ? 'confirmado' : 'ja_estava:' + (r?.status ?? '?') };
+  }
+
+  const r = await aplicarStatusDoGateway(order.id, status, 'webhook', log);
+  return { orderId: order.id, resumo: r?.mudou ? 'status:' + status : 'sem_mudanca:' + (r?.status ?? '?') };
+}
+
+/**
+ * Mesmo desenho, do lado da FyHub: o status vem do `GET /cob/{txid}`.
+ *
+ * A busca é por `providerOrderId` porque é ali que o adaptador grava o
+ * `txid` que ele mesmo gerou. O filtro por `provider` não é decoração: sem
+ * ele, um `txid` que por acaso coincidisse com o id de pedido de outro
+ * provedor confirmaria a venda errada.
+ */
+async function processarCobrancaFyhub(
+  txid: string,
+  log: Log,
+): Promise<{ orderId: string | null; resumo: string }> {
+  const status = await fyhubGateway.getStatus({ providerOrderId: txid, providerPaymentId: null });
+
+  if (status === null) {
+    throw new Error('fyhub: status indisponível para a cobrança ' + txid);
+  }
+
+  const order = await prisma.order.findFirst({
+    where: { providerOrderId: txid, provider: 'fyhub' },
+    select: { id: true, status: true },
+  });
+
+  if (!order) {
+    log.warn({ txid, status }, 'webhook fyhub: cobrança sem pedido correspondente');
     return { orderId: null, resumo: 'sem_pedido:' + status };
   }
 

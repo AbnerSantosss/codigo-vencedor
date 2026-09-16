@@ -227,6 +227,15 @@ export interface SecretInputProps {
   isSet: boolean;
   state: SecretState;
   onChange: (s: SecretState) => void;
+  /**
+   * Campo de várias linhas, para credencial em PEM.
+   *
+   * Um certificado colado num campo de uma linha perde as quebras, e o PEM
+   * só é válido com elas. O estrago aparece muito depois, no handshake TLS,
+   * como "conexão recusada" — sem nada apontando para o campo que o
+   * truncou.
+   */
+  multilinha?: boolean;
 }
 
 /**
@@ -239,7 +248,7 @@ export interface SecretInputProps {
  * nada zere todas as chaves — o que já aconteceu no painel antigo antes
  * deste desenho.
  */
-export function SecretInput({ label, hint, isSet, state, onChange }: SecretInputProps) {
+export function SecretInput({ label, hint, isSet, state, onChange, multilinha }: SecretInputProps) {
   const id = useId();
   const [visivel, setVisivel] = useState(false);
 
@@ -258,30 +267,59 @@ export function SecretInput({ label, hint, isSet, state, onChange }: SecretInput
       htmlFor={id}
       className={cn(state.clear && 'opacity-90')}
     >
-      <div className="flex items-center gap-2">
+      <div className={cn('flex gap-2', multilinha ? 'items-start' : 'items-center')}>
         <div className="relative min-w-0 flex-1">
-          <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden />
-          <Input
-            id={id}
-            type={visivel ? 'text' : 'password'}
-            autoComplete="new-password"
-            spellCheck={false}
-            placeholder={marca}
-            value={state.value}
-            disabled={state.clear}
-            onChange={(e) => onChange({ value: e.target.value, clear: false })}
-            className="pr-11 pl-9 font-mono text-sm"
-          />
-          {state.value ? (
-            <button
-              type="button"
-              onClick={() => setVisivel((v) => !v)}
-              aria-label={visivel ? 'Esconder' : 'Mostrar o que acabei de digitar'}
-              className="absolute top-1/2 right-2 grid size-8 -translate-y-1/2 place-items-center rounded-sm text-muted hover:bg-surface-2 hover:text-ink"
-            >
-              {visivel ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-          ) : null}
+          {multilinha ? (
+            /**
+             * O campo de PEM aparece em texto aberto, sem o olhinho.
+             *
+             * Não é descuido. Mascarar um bloco de três mil caracteres
+             * tornaria impossível conferir se ele foi colado inteiro — que é
+             * justamente o erro mais comum desta tela, porque o material
+             * chega em formato binário e vira PEM à mão. O valor também
+             * nunca volta do servidor, então recarregar a tela não expõe
+             * nada: o que aparece é só o que a pessoa acabou de colar, na
+             * máquina dela, já autenticada como dona.
+             */
+            <Textarea
+              id={id}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={marca}
+              value={state.value}
+              disabled={state.clear}
+              onChange={(e) => onChange({ value: e.target.value, clear: false })}
+              className="min-h-28 text-2xs"
+            />
+          ) : (
+            <>
+              <KeyRound
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted"
+                aria-hidden
+              />
+              <Input
+                id={id}
+                type={visivel ? 'text' : 'password'}
+                autoComplete="new-password"
+                spellCheck={false}
+                placeholder={marca}
+                value={state.value}
+                disabled={state.clear}
+                onChange={(e) => onChange({ value: e.target.value, clear: false })}
+                className="pr-11 pl-9 font-mono text-sm"
+              />
+              {state.value ? (
+                <button
+                  type="button"
+                  onClick={() => setVisivel((v) => !v)}
+                  aria-label={visivel ? 'Esconder' : 'Mostrar o que acabei de digitar'}
+                  className="absolute top-1/2 right-2 grid size-8 -translate-y-1/2 place-items-center rounded-sm text-muted hover:bg-surface-2 hover:text-ink"
+                >
+                  {visivel ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
         <Button
           variant={state.clear ? 'ghost' : 'danger'}

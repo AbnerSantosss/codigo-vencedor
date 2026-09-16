@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, CreditCard, KeyRound, QrCode, Store, XCircle } from 'lucide-react';
+import { CheckCircle2, CreditCard, KeyRound, Landmark, QrCode, Store, XCircle } from 'lucide-react';
 import { api, descreverErro, ehSessaoExpirada } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import type { GatewayId, GatewayResponse, GatewayTestResponse } from '@/lib/types';
@@ -37,7 +37,7 @@ interface Provedor {
   nome: string;
   resumo: string;
   icone: typeof CreditCard;
-  chaves: { key: string; label: string; hint?: string; obrigatoria: boolean }[];
+  chaves: { key: string; label: string; hint?: string; obrigatoria: boolean; multilinha?: boolean }[];
 }
 
 const PROVEDORES: Provedor[] = [
@@ -98,6 +98,53 @@ const PROVEDORES: Provedor[] = [
       },
     ],
   },
+  {
+    id: 'fyhub',
+    nome: 'FyHub',
+    resumo: 'Pix direto pelo padrão do Banco Central, com certificado. Confirmação automática.',
+    icone: Landmark,
+    chaves: [
+      {
+        key: 'fyhub.clientId',
+        label: 'Client ID',
+        hint: 'Da aplicação "API QRCode", no painel da FyHub.',
+        obrigatoria: true,
+      },
+      { key: 'fyhub.clientSecret', label: 'Client Secret', obrigatoria: true },
+      {
+        key: 'fyhub.certPem',
+        label: 'Certificado do cliente (PEM)',
+        hint: 'Cole o arquivo inteiro, da linha -----BEGIN CERTIFICATE----- até a -----END-----. A FyHub exige certificado: sem ele a conexão nem se estabelece, mesmo com o Client ID certo.',
+        obrigatoria: true,
+        multilinha: true,
+      },
+      {
+        key: 'fyhub.keyPem',
+        label: 'Chave privada do certificado (PEM)',
+        hint: 'O par da chave acima. Também inteiro, com as linhas BEGIN e END.',
+        obrigatoria: true,
+        multilinha: true,
+      },
+      {
+        key: 'fyhub.certPassphrase',
+        label: 'Senha da chave privada',
+        hint: 'Só se a chave privada tiver sido gerada com senha. Na dúvida, deixe em branco.',
+        obrigatoria: false,
+      },
+      {
+        key: 'fyhub.pixKey',
+        label: 'Chave Pix do recebedor',
+        hint: 'A chave cadastrada na conta FyHub. É o recebedor de toda cobrança gerada aqui.',
+        obrigatoria: true,
+      },
+      {
+        key: 'fyhub.webhookToken',
+        label: 'Segredo do webhook (você escolhe)',
+        hint: 'Este não vem da FyHub: é um segredo seu. O padrão do Banco Central não assina as notificações, então ele viaja dentro do endereço do webhook e é a única prova de que a notificação veio de lá. Sem ele, nenhuma é aceita.',
+        obrigatoria: true,
+      },
+    ],
+  },
 ];
 
 /** Onde cada provedor deve entregar as notificações. */
@@ -106,6 +153,11 @@ const WEBHOOKS: Partial<Record<GatewayId, { caminho: string; onde: string; nota?
     caminho: '/webhooks/mercadopago',
     onde: 'Suas integrações › Webhooks › URL de produção',
     nota: 'Marque só os eventos de "Pagamentos". A assinatura é conferida com a chave secreta que você colou acima.',
+  },
+  fyhub: {
+    caminho: '/webhooks/fyhub/SEU_SEGREDO',
+    onde: 'a própria FyHub, pelo botão abaixo',
+    nota: 'O segredo vai no caminho, e não depois de "?", porque o padrão do Banco Central manda o provedor acrescentar "/pix" ao fim do endereço — o que embaralharia um segredo posto na query. Troque SEU_SEGREDO pelo que você cadastrou aqui; ele não volta a aparecer depois de salvo.',
   },
   appmax: {
     caminho: '/webhooks/appmax?t=SEU_SEGREDO',
@@ -202,6 +254,18 @@ function Formulario({ inicial }: { inicial: GatewayResponse }) {
     onSuccess: (res) => setTeste(res),
   });
 
+  /**
+   * Registrar o webhook é um passo à parte, e só a FyHub tem.
+   *
+   * Nos outros dois provedores a URL é colada num formulário do site deles.
+   * No padrão do Banco Central ela é cadastrada pela API — e, sem isso, a
+   * cobrança sai, o cliente paga, e nada avisa este site.
+   */
+  const registrar = useAcao(
+    () => api<{ ok: boolean; url: string; detail: string }>('/gateway/fyhub/webhook', { method: 'POST' }),
+    { sucesso: (r) => r.detail },
+  );
+
   const provedorAtivo = PROVEDORES.find((p) => p.id === ativo)!;
 
   // Sujo = algum campo diferente do que veio do servidor, ou uma credencial
@@ -236,7 +300,9 @@ function Formulario({ inicial }: { inicial: GatewayResponse }) {
         <div className="grid gap-4">
         <div>
           <GroupTitle>Quem processa a venda</GroupTitle>
-          <div className="grid gap-3 sm:grid-cols-3">
+          {/* Quatro provedores: 2x2 no tablet, uma fila no desktop. No
+              celular continuam empilhados, que é onde está o público. */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {PROVEDORES.map((p) => (
               <CartaoProvedor
                 key={p.id}
@@ -285,6 +351,7 @@ function Formulario({ inicial }: { inicial: GatewayResponse }) {
                 key={c.key}
                 label={c.label + (c.obrigatoria ? '' : ' (opcional)')}
                 hint={c.hint}
+                multilinha={c.multilinha}
                 isSet={jaTem(c.key)}
                 state={segredos[c.key] ?? secretVazio}
                 onChange={(s) => setSegredos((m) => ({ ...m, [c.key]: s }))}
@@ -306,6 +373,18 @@ function Formulario({ inicial }: { inicial: GatewayResponse }) {
             </code>
             {WEBHOOKS[ativo]!.nota ? (
               <p className="mt-2 text-2xs text-muted">{WEBHOOKS[ativo]!.nota}</p>
+            ) : null}
+            {ativo === 'fyhub' ? (
+              <div className="mt-3">
+                <Button variant="ghost" loading={registrar.isPending} onClick={() => registrar.mutate()}>
+                  Registrar webhook na FyHub
+                </Button>
+                <p className="mt-2 text-2xs text-muted">
+                  Salve a tela primeiro: o botão usa o segredo já gravado e o endereço público do
+                  site, que precisa ser HTTPS. Enquanto o webhook não estiver registrado, os
+                  pagamentos não são confirmados sozinhos.
+                </p>
+              </div>
             ) : null}
           </div>
         ) : null}

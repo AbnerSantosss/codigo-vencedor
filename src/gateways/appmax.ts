@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { conferirSegredoDeWebhook } from '../lib/webhookSecret.js';
 import { SECRET_KEYS, getSecret } from '../services/secrets.js';
 import { getSiteConfig } from '../services/config.js';
 import type { PaymentGateway, PaymentStatus, PixCharge, VerifyResult } from './types.js';
@@ -215,13 +215,7 @@ export function mapearStatusAppmax(bruto: unknown): PaymentStatus {
  * nosso, justamente porque a Appmax não assina nada.
  */
 export async function conferirTokenDeWebhook(recebido: string | undefined): Promise<boolean> {
-  const esperado = await getSecret(SECRET_KEYS.appmaxWebhookToken);
-  if (!esperado || !recebido) return false;
-
-  const a = Buffer.from(esperado, 'utf8');
-  const b = Buffer.from(recebido, 'utf8');
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  return conferirSegredoDeWebhook(SECRET_KEYS.appmaxWebhookToken, recebido);
 }
 
 /* ------------------------------------------------------------------ *

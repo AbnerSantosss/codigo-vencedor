@@ -105,6 +105,8 @@ enum GatewayId {
   mercadopago
   appmax
   static_pix
+  /// Pix pela API padrão do Banco Central, com mTLS. Ver src/gateways/fyhub.ts.
+  fyhub
 }
 
 enum GatewayMode {

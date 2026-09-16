@@ -193,7 +193,7 @@ export type ConfigPatch = Partial<{
 
 /* -------------------------------------------------------------- Gateway -- */
 
-export type GatewayId = 'mercadopago' | 'appmax' | 'static_pix';
+export type GatewayId = 'mercadopago' | 'appmax' | 'static_pix' | 'fyhub';
 
 /** Mapa chave → "está configurado?". Nunca o valor. */
 export type SecretsStatus = Record<string, boolean>;
