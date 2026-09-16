@@ -89,12 +89,12 @@ await app.register(fastifyStatic, {
   index: false,
   cacheControl: false,
   // O HTML é servido pelas rotas abaixo, com nonce; aqui só o resto.
-  setHeaders(res, path) {
+  setHeaders(reply, path) {
     if (path.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-store');
+      reply.header('Cache-Control', 'no-store');
       return;
     }
-    res.setHeader('Cache-Control', isProd ? 'public, max-age=31536000, immutable' : 'no-cache');
+    reply.header('Cache-Control', isProd ? 'public, max-age=31536000, immutable' : 'no-cache');
   },
 });
 
@@ -112,12 +112,12 @@ await app.register(fastifyStatic, {
   index: false,
   decorateReply: false,
   cacheControl: false,
-  setHeaders(res, path) {
+  setHeaders(reply, path) {
     if (path.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-store');
+      reply.header('Cache-Control', 'no-store');
       return;
     }
-    res.setHeader('Cache-Control', isProd ? 'public, max-age=31536000, immutable' : 'no-store');
+    reply.header('Cache-Control', isProd ? 'public, max-age=31536000, immutable' : 'no-store');
   },
 });
 
@@ -127,10 +127,10 @@ await app.register(fastifyStatic, {
   index: false,
   decorateReply: false,
   cacheControl: false,
-  setHeaders(res) {
+  setHeaders(reply) {
     // O painel antigo nunca é cacheado: uma versão velha do app.js aqui
     // significa um painel que não bate com a API.
-    res.setHeader('Cache-Control', 'no-store');
+    reply.header('Cache-Control', 'no-store');
   },
 });
 

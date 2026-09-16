@@ -8,6 +8,7 @@ import { Callout, type Tom } from '@/components/ui/layout';
 import { Surface } from '@/components/ui/surface';
 import { PageBackdrop } from '@/components/ui/backdrop';
 import { useToast } from '@/components/ui/toast';
+import { cn } from '@/lib/cn';
 
 /* ==========================================================================
    Telas de autenticação: login, esqueci a senha, criar/redefinir senha e a
@@ -46,7 +47,12 @@ function Moldura({
     // senão sobra rolagem horizontal em 320px.
     <PageBackdrop
       as="main"
-      className="mx-0 grid min-h-svh place-items-center rounded-none px-4 py-8 sm:mx-0 sm:px-6"
+      className={cn(
+        'mx-0 grid min-h-svh place-items-center rounded-none px-4 py-8 sm:mx-0 sm:px-6',
+        // Só a tela de login (não "esqueci a senha" etc.) leva a foto de
+        // estádio; as demais continuam com a grade+halos padrão.
+        login && 'cv-login-backdrop',
+      )}
     >
       <div className="grid w-full max-w-sm justify-items-center gap-6">
         {login ? (
@@ -116,14 +122,11 @@ interface LoginResponse {
 export function Login({
   mensagem,
   tom = 'err',
-  devLoginAvailable = false,
   onEntrou,
   onEsqueci,
 }: {
   mensagem?: string | null;
   tom?: Tom;
-  /** Só true quando o servidor confirma `NODE_ENV !== 'production'`. */
-  devLoginAvailable?: boolean;
   onEntrou: (r: LoginResponse) => void;
   onEsqueci: (email: string) => void;
 }) {
@@ -131,7 +134,6 @@ export function Login({
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [entrandoDev, setEntrandoDev] = useState(false);
 
   async function submeter(e: React.FormEvent) {
     e.preventDefault();
@@ -157,30 +159,6 @@ export function Login({
       }
     } finally {
       setEnviando(false);
-    }
-  }
-
-  /**
-   * Atalho de desenvolvimento: entra como o `owner` sem senha.
-   *
-   * O botão só aparece quando o servidor disse que não está em produção —
-   * mas quem realmente decide isso é a rota (`/auth/dev-login` responde 404
-   * em produção), não este `if`.
-   */
-  async function entrarComoDev() {
-    setEntrandoDev(true);
-    setErro(null);
-    try {
-      const res = await api<LoginResponse>('/auth/dev-login', { method: 'POST' });
-      onEntrou(res);
-    } catch (err) {
-      setErro(
-        err instanceof ApiError && err.data.error === 'sem_admin'
-          ? 'Nenhum administrador cadastrado ainda — rode o seed.'
-          : descreverErro(err),
-      );
-    } finally {
-      setEntrandoDev(false);
     }
   }
 
@@ -220,17 +198,6 @@ export function Login({
       <Button type="submit" block loading={enviando}>
         Entrar no painel
       </Button>
-      {devLoginAvailable ? (
-        <Button
-          type="button"
-          variant="ghost"
-          block
-          loading={entrandoDev}
-          onClick={entrarComoDev}
-        >
-          Entrar como admin (dev)
-        </Button>
-      ) : null}
     </Moldura>
   );
 }

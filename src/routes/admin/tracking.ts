@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { audit } from '../../lib/audit.js';
-import { requireAdmin } from '../../lib/auth.js';
+import { requireAdmin, requireOwner } from '../../lib/auth.js';
 import { getSiteConfig, saveSiteConfig, trackingSchema } from '../../services/config.js';
 import {
   SECRET_KEYS,
@@ -48,6 +48,8 @@ const testeBody = z
 
 export const trackingRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireAdmin());
+  // Guarda o token da CAPI: `editor` não entra.
+  app.addHook('preHandler', requireOwner());
 
   app.get('/tracking', async (_req, reply) => {
     const cfg = await getSiteConfig();

@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { audit } from '../../lib/audit.js';
-import { requireAdmin } from '../../lib/auth.js';
+import { requireAdmin, requireOwner } from '../../lib/auth.js';
 import { emailSchema, getSiteConfig, saveSiteConfig } from '../../services/config.js';
 import { DEFAULT_TEMPLATES, TEMPLATE_META, renderTemplate, type TemplateId } from '../../services/emailTemplates.js';
 import { invalidateMailerCache, sendMail, verifyMailer } from '../../services/mailer.js';
@@ -25,6 +25,8 @@ const EMAIL_SECRETS = [SECRET_KEYS.emailApiKey];
 
 export const emailRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireAdmin());
+  // Guarda a credencial de SMTP: `editor` não entra.
+  app.addHook('preHandler', requireOwner());
 
   app.get('/email', async (_req, reply) => {
     const cfg = await getSiteConfig();

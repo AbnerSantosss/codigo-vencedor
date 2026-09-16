@@ -4,11 +4,12 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { audit } from '../../lib/audit.js';
-import { requireAdmin } from '../../lib/auth.js';
+import { requireAdmin, requireOwner } from '../../lib/auth.js';
 import {
   EVENTOS_SAIDA,
   EVENTOS_SAIDA_LISTA,
   MAX_TENTATIVAS,
+  conferirDestinoResolvido,
   conferirUrlDestino,
   dispatchTeste,
   reprocessar,
@@ -29,6 +30,7 @@ const MOTIVO_URL: Record<string, string> = {
   protocolo: 'Use http:// ou https://.',
   credencial: 'Não coloque usuário e senha na URL — use o campo de headers.',
   metadados: 'Este endereço é o de metadados da nuvem e não pode ser usado como destino.',
+  dns: 'Não foi possível resolver esse endereço. Confira o domínio.',
 };
 
 const METODOS = ['POST', 'PUT', 'PATCH'] as const;
@@ -86,6 +88,8 @@ function erroZod(reply: import('fastify').FastifyReply, err: z.ZodError) {
 
 export const webhooksAdminRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireAdmin());
+  // Define para onde saem dados de pedido: `editor` não entra.
+  app.addHook('preHandler', requireOwner());
 
   /* -------------------------------------------------------------- *
    * Listagem
@@ -143,6 +147,9 @@ export const webhooksAdminRoutes: FastifyPluginAsync = async (app) => {
     const alvo = conferirUrlDestino(parsed.data.url);
     if (!alvo.ok) return reply.code(400).send({ error: 'url_invalida', message: MOTIVO_URL[alvo.motivo] });
 
+    const resolvido = await conferirDestinoResolvido(alvo.url);
+    if (!resolvido.ok) return reply.code(400).send({ error: 'url_invalida', message: MOTIVO_URL[resolvido.motivo] });
+
     const secret = novoSegredo();
     const criado = await prisma.outboundWebhook.create({
       data: {
@@ -183,6 +190,9 @@ export const webhooksAdminRoutes: FastifyPluginAsync = async (app) => {
     if (parsed.data.url !== undefined) {
       const alvo = conferirUrlDestino(parsed.data.url);
       if (!alvo.ok) return reply.code(400).send({ error: 'url_invalida', message: MOTIVO_URL[alvo.motivo] });
+
+      const resolvido = await conferirDestinoResolvido(alvo.url);
+      if (!resolvido.ok) return reply.code(400).send({ error: 'url_invalida', message: MOTIVO_URL[resolvido.motivo] });
     }
 
     const antes = await prisma.outboundWebhook.findUnique({ where: { id: p.data.id }, select: SELECT_WEBHOOK });

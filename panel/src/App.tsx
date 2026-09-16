@@ -21,7 +21,6 @@ export function App() {
   const qc = useQueryClient();
   const [fase, setFase] = useState<Fase>({ nome: 'carregando' });
   const [me, setMe] = useState<Me | null>(null);
-  const [devLogin, setDevLogin] = useState(false);
 
   /**
    * Boot.
@@ -32,11 +31,6 @@ export function App() {
    */
   const boot = useCallback(async () => {
     setFase({ nome: 'carregando' });
-    // Decorativo: quem realmente barra o atalho em produção é o servidor
-    // (a rota some com 404 quando NODE_ENV=production).
-    api<{ devLoginAvailable: boolean }>('/auth/status')
-      .then((s) => setDevLogin(s.devLoginAvailable))
-      .catch(() => setDevLogin(false));
     try {
       const eu = await api<Me>('/auth/me');
       setMe(eu);
@@ -117,7 +111,6 @@ export function App() {
         <Login
           mensagem={fase.mensagem}
           tom={fase.tom ?? 'err'}
-          devLoginAvailable={devLogin}
           onEntrou={(res) => {
             if (res.mustChangePassword) setFase({ nome: 'trocar-senha', forcada: true });
             else void boot();

@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { montarPayload, type EventoSaida, type RefSaida } from './eventPayload.js';
@@ -74,7 +75,7 @@ const LOTE_POR_RODADA = 20;
  * URL de destino
  * ------------------------------------------------------------------ */
 
-export type UrlInvalida = 'formato' | 'protocolo' | 'credencial' | 'metadados';
+export type UrlInvalida = 'formato' | 'protocolo' | 'credencial' | 'metadados' | 'dns';
 
 /**
  * Confere a URL que o dono digitou.
@@ -87,12 +88,15 @@ export type UrlInvalida = 'formato' | 'protocolo' | 'credencial' | 'metadados';
  *
  * O que é recusado, então, é o que não tem uso legítimo nenhum: protocolo
  * fora de http/https, credencial embutida na URL (que iria para o log de
- * qualquer proxy no caminho) e o endereço de metadados de nuvem
- * `169.254.169.254`, cuja única razão de aparecer aqui seria roubar
- * credencial da máquina.
+ * qualquer proxy no caminho) e a faixa link-local/metadados de nuvem, cuja
+ * única razão de aparecer aqui seria roubar credencial da máquina.
  *
- * A mitigação de verdade é outra: só o dono autenticado cadastra destino, e
- * o painel avisa quando a URL não é HTTPS.
+ * Esta função faz só a parte sincrona (formato, protocolo, credencial).
+ * A faixa de metadados é conferida em `conferirDestinoResolvido`, que
+ * precisa resolver o nome antes de decidir.
+ *
+ * A mitigação de verdade é outra: só o `owner` autenticado cadastra destino,
+ * e o painel avisa quando a URL não é HTTPS.
  */
 export function conferirUrlDestino(url: string): { ok: true; url: URL } | { ok: false; motivo: UrlInvalida } {
   let u: URL;
@@ -103,10 +107,50 @@ export function conferirUrlDestino(url: string): { ok: true; url: URL } | { ok: 
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false, motivo: 'protocolo' };
   if (u.username || u.password) return { ok: false, motivo: 'credencial' };
-  if (u.hostname === '169.254.169.254' || u.hostname === 'metadata.google.internal') {
+  return { ok: true, url: u };
+}
+
+/**
+ * Faixas que só servem para roubar credencial da máquina: link-local (onde
+ * mora o endpoint de metadados de AWS, GCP, Azure e Oracle), o equivalente
+ * IPv6 da AWS e o da Alibaba. Rede privada comum (10/8, 172.16/12, 192.168/16,
+ * loopback) segue liberada de propósito — o destino real do dono é um n8n
+ * auto-hospedado na mesma rede Docker, e recusá-la quebraria o caso de uso.
+ */
+function ehFaixaDeMetadados(ip: string): boolean {
+  const limpo = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  if (limpo.startsWith('169.254.')) return true; // link-local IPv4 (inclui 169.254.169.254)
+  if (limpo === '100.100.100.200') return true; // Alibaba Cloud
+  const v6 = limpo.toLowerCase();
+  if (v6.startsWith('fe80:')) return true; // link-local IPv6
+  if (v6.startsWith('fd00:ec2:')) return true; // AWS IMDS sobre IPv6
+  return false;
+}
+
+/**
+ * Resolve o host e recusa se **qualquer** endereço cair na faixa de
+ * metadados. Resolver é o que fecha as formas que a checagem por texto não
+ * pega: `http://2852039166/` (decimal), `0xA9FEA9FE` (hex), `::ffff:169.254.169.254`
+ * e um nome de domínio que aponte para lá.
+ *
+ * É chamada de novo na hora de entregar, e não só ao salvar, porque o DNS
+ * pode mudar entre as duas coisas (DNS rebinding). Resíduo conhecido: entre
+ * esta checagem e a resolução que o `fetch` faz por conta própria ainda há
+ * uma janela — fechá-la de vez exigiria fixar o IP no socket.
+ */
+export async function conferirDestinoResolvido(
+  u: URL,
+): Promise<{ ok: true } | { ok: false; motivo: UrlInvalida }> {
+  let enderecos: { address: string }[];
+  try {
+    enderecos = await lookup(u.hostname, { all: true });
+  } catch {
+    return { ok: false, motivo: 'dns' };
+  }
+  if (enderecos.some((e) => ehFaixaDeMetadados(e.address))) {
     return { ok: false, motivo: 'metadados' };
   }
-  return { ok: true, url: u };
+  return { ok: true };
 }
 
 
@@ -223,6 +267,13 @@ export async function entregar(deliveryId: string, log: Log, ignorarDesativado =
 
   const alvo = conferirUrlDestino(d.webhook.url);
   if (!alvo.ok) return desistir('url recusada: ' + alvo.motivo);
+
+  // Só `metadados` faz desistir: é decisão de política, não vai melhorar com
+  // o tempo. Falha de DNS segue para o `fetch`, que erra e cai na retentativa
+  // normal — `desistir` zera o `nextRetryAt`, e um DNS instável não pode
+  // descartar de vez o aviso de uma venda.
+  const resolvido = await conferirDestinoResolvido(alvo.url);
+  if (!resolvido.ok && resolvido.motivo === 'metadados') return desistir('url recusada: metadados');
 
   const corpoCru = JSON.stringify(d.payload ?? {});
   const metodo = (d.webhook.method || 'POST').toUpperCase();

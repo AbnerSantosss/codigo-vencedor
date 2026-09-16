@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
-import { env, isProd } from '../../env.js';
+import { env } from '../../env.js';
 import { clientIp } from '../../lib/security.js';
 import { audit } from '../../lib/audit.js';
 import { getSiteConfig } from '../../services/config.js';
@@ -10,7 +10,6 @@ import { sha256 } from '../../services/crypto.js';
 import { renderTemplate } from '../../services/emailTemplates.js';
 import { sendMail } from '../../services/mailer.js';
 import {
-  ACCESS_COOKIE,
   REFRESH_COOKIE,
   clearAuthCookies,
   hashPassword,
@@ -66,11 +65,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         // Gasta tempo parecido com o de uma verificação real, para o tempo de
         // resposta não revelar se o e-mail existe.
         await verifyPassword(password, '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidin');
+        await audit(req, 'auth.login_failed', 'AdminUser', user?.id ?? null, {
+          email,
+          motivo: user ? 'conta_desativada' : 'email_inexistente',
+        });
         return reply.code(401).send(genericFailure);
       }
 
       if (user.lockedUntil && user.lockedUntil > new Date()) {
         const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+        await audit(req, 'auth.login_blocked', 'AdminUser', user.id, { email, minutosRestantes: minutes });
         return reply.code(423).send({ error: 'conta_bloqueada', minutes });
       }
 
@@ -85,6 +89,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
             failedAttempts: lock ? 0 : attempts,
             lockedUntil: lock ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
           },
+        });
+        await audit(req, lock ? 'auth.login_locked' : 'auth.login_failed', 'AdminUser', user.id, {
+          email,
+          motivo: 'senha_incorreta',
+          tentativas: attempts,
         });
         if (lock) return reply.code(423).send({ error: 'conta_bloqueada', minutes: LOCK_MINUTES });
         return reply.code(401).send(genericFailure);
@@ -105,53 +114,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       const refreshToken = await issueRefreshToken(user.id, ip, req.headers['user-agent']);
       setAuthCookies(reply, accessToken, refreshToken);
 
+      await audit(req, 'auth.login', 'AdminUser', user.id, { email: user.email, papel: user.role });
+
       return reply.send({
         user: { email: user.email, name: user.name, role: user.role },
         mustChangePassword: user.mustChangePassword,
       });
     },
   );
-
-  /**
-   * Atalho de login só para desenvolvimento — entra como o primeiro `owner`
-   * cadastrado sem pedir senha.
-   *
-   * Some inteiramente em produção: com `isProd` a rota responde 404 em vez
-   * de 403, para não revelar nem que ela existe. Nunca checar isso só no
-   * front — o botão que chama esta rota é decorativo, quem impede o uso
-   * indevido é o servidor.
-   */
-  app.post('/auth/dev-login', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
-    if (isProd) return reply.code(404).send({ error: 'nao_encontrado' });
-
-    const user = await prisma.adminUser.findFirst({
-      where: { disabledAt: null, role: 'owner' },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (!user) return reply.code(404).send({ error: 'sem_admin' });
-
-    await prisma.adminUser.update({
-      where: { id: user.id },
-      data: { failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
-    });
-
-    const ip = clientIp(req, env.TRUST_CLOUDFLARE);
-    const accessToken = await signAccessToken({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      mustChangePassword: user.mustChangePassword,
-    });
-    const refreshToken = await issueRefreshToken(user.id, ip, req.headers['user-agent']);
-    setAuthCookies(reply, accessToken, refreshToken);
-
-    await audit(req, 'auth.dev_login', 'AdminUser', user.id);
-
-    return reply.send({
-      user: { email: user.email, name: user.name, role: user.role },
-      mustChangePassword: user.mustChangePassword,
-    });
-  });
 
   /** Renova o access token a partir do refresh, com rotação. */
   app.post('/auth/refresh', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
@@ -245,19 +215,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ ok: true });
     },
   );
-
-  /**
-   * Usado pelo painel para saber se já existe sessão sem precisar de 401 no
-   * console, e se o atalho "entrar como admin" deve aparecer na tela de
-   * login — `devLoginAvailable` reflete o `NODE_ENV` real do servidor, não
-   * uma flag do front.
-   */
-  app.get('/auth/status', async (req, reply) => {
-    return reply.send({
-      authenticated: Boolean(req.cookies[ACCESS_COOKIE] || req.cookies[REFRESH_COOKIE]),
-      devLoginAvailable: !isProd,
-    });
-  });
 
   /* ------------------------------------------------------------------ *
    * Esqueci a senha

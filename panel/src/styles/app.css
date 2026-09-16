@@ -376,6 +376,33 @@
   mask-image: linear-gradient(180deg, var(--color-ink) 0%, var(--color-ink) 55%, transparent 100%);
 }
 
+/* --- Fundo de página: tela de login ---------------------------------------
+   Só a tela de login (não as outras de autenticação, como "esqueci a
+   senha") troca a grade+halos por uma foto de estádio, uma por formato —
+   o card de login é curto e centralizado, então não há necessidade de
+   esconder o rodapé da imagem como a grade faz. O degradê por cima é o
+   mesmo raciocínio do `.cv-section--video` da LP: protege o contraste do
+   cartão sem apagar a foto. Reaproveita o `::before` de `.cv-backdrop`
+   (mesmo elemento, mesma posição/isolamento); só as propriedades visuais
+   abaixo sobrescrevem as da grade, por ordem de declaração no arquivo. */
+.cv-login-backdrop::before {
+  background-color: var(--color-bg);
+  background-image:
+    linear-gradient(180deg, rgba(4, 6, 4, 0.35) 0%, rgba(4, 6, 4, 0.25) 45%, rgba(4, 6, 4, 0.75) 100%),
+    url('/assets/login-stadium-mobile.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  mask-image: none;
+}
+@media (min-width: 48em) {
+  .cv-login-backdrop::before {
+    background-image:
+      linear-gradient(180deg, rgba(4, 6, 4, 0.35) 0%, rgba(4, 6, 4, 0.2) 45%, rgba(4, 6, 4, 0.7) 100%),
+      url('/assets/login-stadium-desktop.webp');
+  }
+}
+
 /* --- Abas e segmentado: indicador que desliza ----------------------------- */
 
 .cv-tabs-list {

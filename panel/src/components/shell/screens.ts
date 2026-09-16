@@ -63,6 +63,7 @@ export const TELAS: Tela[] = [
     icone: CreditCard,
     titulo: 'Gateway de pagamento',
     sub: 'Provedor, ambiente e credenciais. As credenciais ficam cifradas no banco e nunca voltam para esta tela.',
+    ownerOnly: true,
   },
   {
     id: 'rastreamento',
@@ -71,6 +72,7 @@ export const TELAS: Tela[] = [
     icone: Radar,
     titulo: 'Rastreamento',
     sub: 'Pixel da Meta, API de Conversões e as demais plataformas.',
+    ownerOnly: true,
   },
   {
     id: 'eventos',
@@ -135,6 +137,7 @@ export const TELAS: Tela[] = [
     icone: Mail,
     titulo: 'E-mail',
     sub: 'Provedor de envio, templates e as regras dos e-mails automáticos.',
+    ownerOnly: true,
   },
   {
     id: 'webhooks',
@@ -143,6 +146,7 @@ export const TELAS: Tela[] = [
     icone: Webhook,
     titulo: 'Integrações e webhooks',
     sub: 'Avise outro sistema quando uma venda acontecer — e veja o que os gateways nos avisaram.',
+    ownerOnly: true,
   },
   {
     id: 'usuarios',

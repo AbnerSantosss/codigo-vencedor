@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { audit } from '../../lib/audit.js';
-import { requireAdmin } from '../../lib/auth.js';
+import { requireAdmin, requireOwner } from '../../lib/auth.js';
 import { getSiteConfig, invalidateConfigCache } from '../../services/config.js';
 import { gatewayPorId } from '../../gateways/index.js';
 import { SECRET_KEYS, getSecret, secretsStatus, setSecret, type SecretKey } from '../../services/secrets.js';
@@ -33,6 +33,8 @@ const putBody = z.object({
 
 export const gatewayRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireAdmin());
+  // Guarda o token do gateway e a chave Pix: `editor` não entra.
+  app.addHook('preHandler', requireOwner());
 
   app.get('/gateway', async (_req, reply) => {
     const cfg = await getSiteConfig();
