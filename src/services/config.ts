@@ -147,6 +147,13 @@ export const checkoutSchema = z.object({
    * Pix simulado. Para testar o fluxo inteiro, o dono liga aqui, testa, e
    * desliga. Para testar com gateway real, o caminho é um cupom (que cobra o
    * mínimo do Pix de verdade) — ver `services/coupons.ts`.
+   *
+   * **Ligada por padrão desde 2026-09-23, por decisão do dono** ("deixe o
+   * modo de simulação ativado por padrão até eu add um gateway"), ciente do
+   * risco acima. A flag só age sobre cobrança simulada, e cobrança só nasce
+   * simulada sem chave Pix e sem gateway: quando um gateway entra, o botão
+   * some sozinho. A migração `20260923130000_simulacao_ligada` liga a flag
+   * na linha que já existe em produção.
    */
   simulatedPaymentEnabled: z.boolean(),
 
@@ -537,8 +544,8 @@ export const DEFAULT_THEME: z.infer<typeof themeSchema> = {
 
 export const DEFAULT_CONFIG: SiteConfigData = {
   content: {
-    priceCents: 2790,
-    priceFromCents: 27390,
+    priceCents: 9700,
+    priceFromCents: 19700,
     currency: 'BRL',
     productName: 'Código Vencedor + App',
     videoEnabled: true,
@@ -560,7 +567,7 @@ export const DEFAULT_CONFIG: SiteConfigData = {
     externalUrl: '',
     buttonLabel: 'Quero garantir minha vaga',
     openInNewTab: false,
-    simulatedPaymentEnabled: false,
+    simulatedPaymentEnabled: true,
     couponsEnabled: false,
     pixMinCents: 100,
   },

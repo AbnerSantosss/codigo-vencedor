@@ -13,8 +13,8 @@
      Config
      --------------------------------------------------------------------- */
   var CFG = {
-    priceCents: 2790,
-    priceFromCents: 27390,
+    priceCents: 9700,
+    priceFromCents: 19700,
     currency: 'BRL',
     theme: {},
     scarcity: { countdown: true, spots: true, buyers: true, bar: true },
@@ -463,8 +463,8 @@
       var mobile = window.matchMedia('(max-width: 47.99em)').matches;
       isMobileVsl = mobile;
       video = document.createElement('video');
-      video.src = mobile ? '/assets/video-lp-480p.mp4' : '/assets/video-lp-720p.mp4';
-      video.poster = mobile ? '/assets/video-lp-poster-480.jpg' : '/assets/video-lp-poster.jpg';
+      video.src = mobile ? '/assets/vsl-lp-480p.mp4' : '/assets/vsl-lp-720p.mp4';
+      video.poster = mobile ? '/assets/vsl-lp-poster-480.jpg' : '/assets/vsl-lp-poster.jpg';
       video.playsInline = true;
       video.preload = 'auto';
       video.controls = false;
@@ -1372,7 +1372,7 @@
    * Texto do elemento sem o que é decoração.
    *
    * `textContent` puro traz as setas e os sinais de "+/−" dos ícones, e o
-   * rótulo do evento chegava no GTM como "O que eu recebo por R$ 27,90?−".
+   * rótulo do evento chegava no GTM como "O que eu recebo por R$ 97,00 por mês?−".
    * Tudo que é `aria-hidden` já está marcado como invisível para leitor de
    * tela; aqui vale a mesma regra.
    */

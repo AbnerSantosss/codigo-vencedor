@@ -25,7 +25,7 @@ Registrar na wiki, na mesma sessão: atualizar `ponto-de-retomada.md`, acrescent
 ## 4. Regras fixadas pelo dono (não renegociar sem ele)
 
 - **Não alterar o design** da landing page. Só formatação, responsividade e o que ele pedir explicitamente.
-- **Preço: R$ 27,90.** Se um teste mudar, restaurar antes de mostrar.
+- **Preço: R$ 97,00 por mês**, sempre na promoção ("de R$ 197,00 por R$ 97,00"; `priceCents: 9700`, `priceFromCents: 19700` — dono, 2026-09-23). Cancelou, perde o acesso ao Código e ao app. Se um teste mudar o preço, restaurar antes de mostrar.
 - **No HTML só a tag do GTM**; os gatilhos ele monta no próprio GTM.
 - **Meta Ads só via Conversions API do servidor.**
 - **Mobile é o público** (90%+): toda decisão de layout começa pelo celular.

@@ -275,7 +275,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
       ...base,
       accessUrl: /^https?:\/\//i.test(cfg.email.accessUrl) ? cfg.email.accessUrl : null,
       amountCents: order.amountCents,
-      /* A página de obrigado mostra "de R$ 27,90 por R$ 24,90 com CUPOM10".
+      /* A página de obrigado mostra "de R$ 97,00 por R$ 87,00 com CUPOM10".
          Sem estes três campos ela só saberia o valor cobrado, e o desconto
          desapareceria exatamente na tela em que a pessoa quer vê-lo. */
       listAmountCents: order.listAmountCents ?? order.amountCents,
@@ -307,8 +307,9 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
    * saída como se fosse venda. Numa instalação nova, sem gateway configurado,
    * toda cobrança nasce simulada — e sem a trava bastaria conhecer o
    * `publicId` do próprio pedido para liberar o produto e sujar o relatório.
-   * Por isso o padrão de `checkout.simulatedPaymentEnabled` é **desligado**,
-   * e o dono liga só enquanto está testando.
+   * Por isso a trava existe. Desde 2026-09-23 ela nasce **ligada**, por
+   * decisão do dono, até ele configurar um gateway — ver
+   * `checkout.simulatedPaymentEnabled` em `services/config.ts`.
    */
   app.post(
     '/api/orders/:publicId/simulate-payment',

@@ -95,9 +95,9 @@ function Formulario({ inicial }: { inicial: import('@/lib/types').Content }) {
             onChange={setVideo}
           />
 
-          {centavos !== 2790 ? (
+          {centavos !== 9700 ? (
             <Callout tom="warn" className="mb-0">
-              O preço combinado do produto é <strong>R$ 27,90</strong>. Você está prestes a publicar{' '}
+              O preço combinado do produto é <strong>R$ 97,00 por mês</strong>. Você está prestes a publicar{' '}
               <strong>{brl(centavos)}</strong> — confira antes de salvar.
             </Callout>
           ) : null}

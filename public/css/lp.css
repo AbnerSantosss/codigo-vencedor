@@ -3123,7 +3123,7 @@ body.cv-locked { overflow: hidden; }
 .cv-checkout-summary .cv-spots { margin: 0.625rem 0 0; }
 /* O aviso de renovacao, compacto (mesma receita do bloco 45): barra de 3px,
    cantos menores, menos respiro. Continua aqui e nao em letra miuda porque
-   R$ 47,90/mes depois do primeiro mes e informacao que o comprador tem de
+   R$ 97,00/mes no lugar de R$ 197,00 e informacao que o comprador tem de
    ver antes de pagar. */
 .cv-checkout-summary .cv-alert {
   margin: 1rem 0 0;
@@ -3221,7 +3221,7 @@ body.cv-locked { overflow: hidden; }
    O dono, sobre os 3 selos dourados (compra segura, acesso imediato, 7 dias
    de garantia): "adicione abaixo do preco do produto essas imagens dos
    selos". Perguntado qual preco — o do topo (hero) ou o do checkout — ele
-   escolheu o checkout: abaixo do "Total hoje R$ 27,90", no resumo do pedido.
+   escolheu o checkout: abaixo da "Mensalidade R$ 97,00", no resumo do pedido.
 
    Antes os selos tinham area propria no grid (`trust`), colada sob o
    formulario no desktop. Agora sao markup comum dentro de

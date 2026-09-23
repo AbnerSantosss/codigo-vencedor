@@ -106,7 +106,7 @@ export const couponsRoutes: FastifyPluginAsync = async (app) => {
     /**
      * Cada linha vai com a conta já feita sobre o preço de hoje.
      *
-     * A tela precisa mostrar "de R$ 27,90 por R$ 24,90", e quem sabe fazer
+     * A tela precisa mostrar "de R$ 97,00 por R$ 87,00", e quem sabe fazer
      * essa conta é o servidor: é a mesma `aplicarDesconto` que a LP e o
      * checkout usam. Repetir a fórmula em TypeScript no painel garantiria
      * que um dia os dois divergem, e a divergência apareceria como um preço
