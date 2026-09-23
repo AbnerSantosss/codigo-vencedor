@@ -52,7 +52,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, EmailTemplate> = {
       'Valor: {{valor}}\n' +
       'Login: {{email}}\n\n' +
       'Entre por aqui: {{link_acesso}}\n\n' +
-      'Comece pelo Código — ele explica a conta que a ferramenta faz. Depois abra o app e use as 8 ferramentas com calma.\n\n' +
+      'Comece pelo Código: ele explica a conta que a ferramenta faz. Depois abra o app e use as 8 ferramentas com calma.\n\n' +
       'Qualquer dúvida, é só responder este e-mail ou chamar no WhatsApp: {{suporte}}',
   },
 
@@ -60,18 +60,18 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, EmailTemplate> = {
     subject: '{{nome}}, seu acesso ficou reservado',
     body:
       'Oi, {{nome}}.\n\n' +
-      'Vi que você começou a garantir o Código Vencedor e parou no meio. Acontece — mas o valor de {{valor}} continua valendo, e o acesso é liberado em segundos depois do Pix.\n\n' +
+      'Vi que você começou a garantir o Código Vencedor e parou no meio. Acontece, mas o valor de {{valor}} continua valendo, e o acesso é liberado em segundos depois do Pix.\n\n' +
       'Para continuar de onde parou: {{link_checkout}}\n\n' +
-      'O que você recebe: o Código completo, a calculadora esportiva e 1 mês de acesso ao app com as 8 ferramentas. E 7 dias de garantia — se não for para você, devolvemos.\n\n' +
+      'O que você recebe: o Código completo, a calculadora esportiva e 1 mês de acesso ao app com as 8 ferramentas. E 7 dias de garantia: se não for para você, devolvemos.\n\n' +
       'Se ficou alguma dúvida antes de decidir, responde este e-mail ou chama no WhatsApp: {{suporte}}',
   },
 
   pix_abandoned: {
-    subject: 'Seu Pix expirou — gere outro em 10 segundos',
+    subject: 'Seu Pix expirou, gere outro em 10 segundos',
     body:
       'Oi, {{nome}}.\n\n' +
       'O Pix do pedido {{pedido}} venceu antes de ser pago. Nada foi cobrado.\n\n' +
-      'Se ainda quiser o acesso, é só gerar um novo — leva 10 segundos e o valor continua {{valor}}: {{link_checkout}}\n\n' +
+      'Se ainda quiser o acesso, é só gerar um novo. Leva 10 segundos e o valor continua {{valor}}: {{link_checkout}}\n\n' +
       'Se desistiu, sem problema. Se foi algum problema com o pagamento, me conta por aqui ou no WhatsApp: {{suporte}}',
   },
 
@@ -81,7 +81,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, EmailTemplate> = {
       'Olá, {{nome}}.\n\n' +
       'Recebemos um pedido para redefinir a senha do seu acesso ao painel do Código Vencedor.\n\n' +
       'Use este link nos próximos {{minutos}} minutos: {{link_reset}}\n\n' +
-      'O link funciona uma única vez. Se você não pediu isso, ignore este e-mail — sua senha continua a mesma.',
+      'O link funciona uma única vez. Se você não pediu isso, ignore este e-mail. Sua senha continua a mesma.',
   },
 
   user_invite: {

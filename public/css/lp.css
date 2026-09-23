@@ -1906,14 +1906,37 @@ button { font-family: inherit; cursor: pointer; }
   display: block;
   block-size: 100%;
   inline-size: calc(var(--cv-vsl-p) * 100%);
-  background: var(--cv-cta);
-  box-shadow: 0 0 12px var(--cv-cta-glow);
+  background: var(--cv-accent);
+  box-shadow: 0 0 12px rgba(245, 197, 24, .45);
 }
 
 .cv-vsl-foot { display: grid; gap: 10px; justify-items: center; text-align: center; }
 .cv-vsl-foot .cv-btn { width: 100%; }
 @media (min-width: 48em) { .cv-vsl-foot .cv-btn { width: auto; } }
 .cv-vsl-foot .cv-btn-note { justify-content: center; margin: 0; }
+
+/* Botao da VSL no amarelo da paleta (dono, 2026-09-23) e escondido nos
+   primeiros 4 s: o initVideo do lp.js tira a classe depois disso.
+   `visibility` guarda o espaco, entao o video nao pula quando ele chega. */
+.cv-vsl-foot .cv-btn {
+  background: var(--cv-accent);
+  color: var(--cv-bg);
+  box-shadow: 0 8px 28px rgba(245, 197, 24, .32);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cv-vsl-foot .cv-btn:hover {
+    background: var(--cv-accent-hover);
+    color: var(--cv-bg);
+    box-shadow: 0 12px 34px rgba(245, 197, 24, .4);
+  }
+}
+.cv-vsl-foot { transition: opacity .35s ease, transform .35s ease, visibility .35s ease; }
+.cv-vsl-cta-hidden .cv-vsl-foot {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(.5rem);
+  pointer-events: none;
+}
 
 @media (max-width: 47.99em) {
   .cv-vsl {
@@ -1940,10 +1963,6 @@ button { font-family: inherit; cursor: pointer; }
     box-shadow: 0 0 0 3px rgba(34, 197, 94, .12), 0 1.25rem 3.5rem rgba(0, 0, 0, .48);
   }
 
-  .cv-vsl-foot {
-    transition: opacity .35s ease, transform .35s ease, visibility .35s ease;
-  }
-
   .cv-vsl-foot .cv-btn {
     width: auto;
     max-inline-size: min(100%, 18rem);
@@ -1952,18 +1971,11 @@ button { font-family: inherit; cursor: pointer; }
     border-radius: .7rem;
     font-size: .875rem;
     line-height: 1.1;
-    box-shadow: 0 .75rem 1.75rem rgba(34, 197, 94, .22);
+    box-shadow: 0 .75rem 1.75rem rgba(245, 197, 24, .22);
   }
 
   .cv-vsl-foot .cv-btn span {
     display: none;
-  }
-
-  .cv-vsl-cta-hidden .cv-vsl-foot {
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(.5rem);
-    pointer-events: none;
   }
 }
 
@@ -2491,15 +2503,39 @@ body.cv-locked { overflow: hidden; }
      topo do arquivo continua vencendo, então ela nasce invisível. */
   .cv-buybar[data-cv-buybar-on] { display: flex; }
 }
-.cv-buybar-info { min-width: 0; line-height: 1.15; }
+.cv-buybar-info { flex: 1; min-width: 0; line-height: 1.15; }
 .cv-buybar-l { display: block; color: var(--cv-muted-2); font-size: var(--fs-micro); font-weight: 600; }
 .cv-buybar-p { display: block; color: var(--cv-accent); font-size: 1.375rem; font-weight: 800; letter-spacing: -.5px; }
+/* "Oferta de lancamento" ao lado do preco (dono, 2026-09-23). Sempre em duas
+   linhas (<br> no HTML): numa so, nao cabe ao lado do preco e do botao em 360px. */
+.cv-buybar-row { display: flex; align-items: center; gap: 6px; }
+.cv-buybar-tag {
+  flex: none;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--cv-accent) 55%, transparent);
+  border-radius: 8px;
+  background: var(--cv-accent-ghost);
+  color: var(--cv-accent);
+  font-size: .5625rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+/* Botao menor (pedido do dono): largura so do texto, e nao mais o resto da
+   barra. A altura segue >= 48px, o alvo de toque minimo do projeto. */
 .cv-buybar .cv-btn {
-  flex: 1;
-  min-width: 0;
-  padding: 14px 16px;
+  flex: none;
+  min-block-size: 3rem;
+  padding: 10px 14px;
+  font-size: .75rem;
+  letter-spacing: .3px;
   gap: 8px;
   box-shadow: 0 6px 18px var(--cv-cta-glow);
+}
+/* Celular estreito (ate ~376px): o preco encolhe um pouco para caber a tag. */
+@media (max-width: 23.5em) {
+  .cv-buybar-p { font-size: 1.25rem; }
 }
 
 /* O botao do WhatsApp e o aviso de compra sobem para nao ficar debaixo da
@@ -2943,11 +2979,16 @@ body.cv-locked { overflow: hidden; }
   font-size: var(--fs-small);
   font-weight: 600;
 }
+/* Cronometro colado no "Oferta de lancamento", em pilula (dono, 2026-09-23). */
 .cv-launchbar-clock {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  padding: 3px 12px;
+  border: 1.5px solid var(--cv-accent);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .22);
 }
 .cv-launchbar-clock-l {
   font-size: var(--fs-micro);
@@ -3400,8 +3441,13 @@ body.cv-locked { overflow: hidden; }
   .cv-checkout-details .cv-seals, .cv-checkout-details .cv-alert, .cv-checkout-details .cv-spots,
   .cv-form-head .cv-label-sm, .cv-launchbar-txt { display: none !important; }
   html:not(.cv-real-deadline) .cv-checkout-box .cv-launchbar-clock { display: none; }
-  .cv-launchbar { padding: .75rem 1rem; gap: .375rem; }
-  .cv-launchbar-tag { font-size: .875rem; }
+  .cv-launchbar { padding: .75rem 1rem; gap: .5rem; }
+  .cv-launchbar-tag { font-size: .75rem; }
+  /* Relogio ao lado da tag em uma linha so (dono, 2026-09-23): no celular a
+     pilula mostra so o tempo; "Termina em" fica para o leitor de tela. */
+  .cv-launchbar-clock { padding: 2px 10px; }
+  .cv-launchbar-clock-l { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cv-launchbar-clock .cv-num { font-size: 1rem; }
   .cv-checkout-summary, .cv-checkout-form { padding: 1rem; }
   .cv-checkout-summary .cv-order-item { margin: 0; gap: .75rem; }
   .cv-checkout-summary .cv-order-img { width: 3.5rem; height: 4rem; }
@@ -3757,4 +3803,46 @@ body.cv-pix-active > :not(#oferta) { display: none !important; }
     gap: .5rem;
   }
   .cv-hero-acao .cv-hero-more .cv-hero-more-arrow svg { width: 15px; height: 17px; }
+}
+
+/* --------------------------------------------------------------------------
+   46. Neon e pulso em todos os CTAs (dono, 2026-09-23)
+
+   "todos os botoes de CTA devem ter um blur neon e um leve pulsar"; o da VSL
+   com mais blur e pulso mais marcado, chamando atencao. Um so padrao para a
+   pagina: substitui o cv-hero-cta-pulse e o cv-submit-glow (esta regra tem
+   mais especificidade e vem depois). A cor do neon vem de --cv-neon-rgb:
+   verde nos CTAs, amarelo no da VSL. Ficam de fora o cupom, o "Simular" e
+   o "Ver como funciona" (nao sao compra); desabilitado nao pulsa. O
+   prefers-reduced-motion do topo do arquivo desliga o pulso.
+   -------------------------------------------------------------------------- */
+.cv-btn:not(.cv-btn--ghost):not(.cv-btn--coupon):not(.cv-btn--sim):not(:disabled),
+.cv-btn--ghost[href="#oferta"] {
+  --cv-neon-rgb: 34, 197, 94;
+  animation: cv-cta-neon 2.4s ease-in-out infinite;
+}
+@keyframes cv-cta-neon {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 1px rgba(var(--cv-neon-rgb), .35), 0 0 14px rgba(var(--cv-neon-rgb), .45), 0 6px 26px rgba(var(--cv-neon-rgb), .28);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 1px rgba(var(--cv-neon-rgb), .6), 0 0 24px rgba(var(--cv-neon-rgb), .7), 0 8px 44px rgba(var(--cv-neon-rgb), .42);
+  }
+}
+/* Especificidade igual a da regra geral acima (e vem depois), senao ela vence. */
+.cv-vsl .cv-vsl-foot .cv-btn[data-cv-vsl-cta]:not(:disabled) {
+  --cv-neon-rgb: 245, 197, 24;
+  animation: cv-cta-neon-vsl 1.8s ease-in-out infinite;
+}
+@keyframes cv-cta-neon-vsl {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 1px rgba(var(--cv-neon-rgb), .5), 0 0 22px rgba(var(--cv-neon-rgb), .6), 0 0 56px rgba(var(--cv-neon-rgb), .4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 2px rgba(var(--cv-neon-rgb), .75), 0 0 34px rgba(var(--cv-neon-rgb), .85), 0 0 90px rgba(var(--cv-neon-rgb), .55);
+  }
 }

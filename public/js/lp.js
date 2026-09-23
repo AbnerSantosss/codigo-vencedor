@@ -308,7 +308,7 @@
       a.href = url;
       if (newTab) { a.target = '_blank'; a.rel = 'noopener'; }
       if (label) {
-        /* Preserva a seta decorativa; troca só o texto. */
+        /* Troca só o texto; se o botão tiver ícone decorativo, ele fica. */
         var arrow = a.querySelector('span[aria-hidden="true"]');
         a.textContent = label;
         if (arrow) { a.append(' '); a.append(arrow); }
@@ -401,7 +401,7 @@
 
     var open = false;
     var modal = null, video = null, bar = null, raf = 0, lastFocus = null, marks = {};
-    var isMobileVsl = false;
+    var ctaTimer = 0;
 
     function paint() {
       if (!video || !bar) return;
@@ -442,6 +442,7 @@
       if (!open) return;
       open = false;
       cancelAnimationFrame(raf);
+      clearTimeout(ctaTimer);
       document.removeEventListener('keydown', onKey, true);
       document.body.classList.remove('cv-locked');
       if (video) { try { video.pause(); } catch (e) {} video.removeAttribute('src'); try { video.load(); } catch (e) {} }
@@ -458,10 +459,14 @@
 
       modal = tpl.content.firstElementChild.cloneNode(true);
       var stage = $('[data-cv-vsl-stage]', modal);
+      /* O botão só aparece 4 s depois de o modal abrir (dono, 2026-09-23):
+         antes disso a atenção é do vídeo. O CSS usa `visibility`, então o
+         espaço fica guardado e nada pula quando ele chega. */
+      modal.classList.add('cv-vsl-cta-hidden');
+      ctaTimer = setTimeout(function () { if (modal) modal.classList.remove('cv-vsl-cta-hidden'); }, 4000);
       bar = $('[data-cv-vsl-bar]', modal);
 
       var mobile = window.matchMedia('(max-width: 47.99em)').matches;
-      isMobileVsl = mobile;
       video = document.createElement('video');
       video.src = mobile ? '/assets/vsl-lp-480p.mp4' : '/assets/vsl-lp-720p.mp4';
       video.poster = mobile ? '/assets/vsl-lp-poster-480.jpg' : '/assets/vsl-lp-poster.jpg';
@@ -483,11 +488,6 @@
       soundBtn.addEventListener('click', function () {
         video.muted = !video.muted;
         soundLabel.textContent = video.muted ? 'Ativar o som' : 'Silenciar';
-      });
-
-      video.addEventListener('timeupdate', function () {
-        if (!isMobileVsl || !modal) return;
-        if (video.currentTime >= 6) modal.classList.add('cv-vsl-cta-hidden');
       });
 
       /* O escudo cobre o vídeo só para engolir o duplo-toque que, no iOS,
